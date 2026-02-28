@@ -3,13 +3,13 @@ import { NavLink } from "react-router-dom";
 import MobileMenu from "./MobileMenu";
 import Button from "../ui/Button";
 
-const CUSTOMER_URL = import.meta.env.VITE_CUSTOMER_PORTAL_URL || "/login";
+const CUSTOMER_URL = "/login";
 
 export default function Header() {
   const [open, setOpen] = useState(false);
 
   const goLogin = () => {
-    window.location.href = CUSTOMER_URL;
+    window.location.href = "/login";
   };
 
   return (
