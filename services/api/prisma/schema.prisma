@@ -99,3 +99,17 @@ model Task {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+model ContactLead {
+  id        Int      @id @default(autoincrement())
+  name      String
+  company   String?
+  phone     String
+  email     String?
+  city      String
+  material  String?
+  preferred String?
+  subject   String?
+  details   String
+  page      String?
+  createdAt DateTime @default(now())
+}
