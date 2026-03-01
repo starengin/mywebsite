@@ -1032,9 +1032,10 @@ app.get("/customers", async (req, res) => {
 });
 
 // ✅ Create customer + send welcome email (email + password + login button)
+// ✅ Create customer + send welcome email (NON-BLOCKING)
 app.post("/customers", async (req, res) => {
   try {
-    const { name, email, password, address, state, gstin } = req.body || {};
+    const { name, email, password } = req.body || {};
 
     if (!name || !email || !password) {
       return res.status(400).json({ message: "Name, Email, Password required" });
@@ -1043,31 +1044,40 @@ app.post("/customers", async (req, res) => {
     const hash = await bcrypt.hash(String(password), 10);
 
     const created = await prisma.user.create({
-data: {
-  role: "CUSTOMER",
-  name: String(name).trim(),
-  email: String(email).toLowerCase().trim(),
-  passwordHash: hash,
-},
+      data: {
+        role: "CUSTOMER",
+        name: String(name).trim(),
+        email: String(email).toLowerCase().trim(),
+        passwordHash: hash,
+      },
       select: { id: true, name: true, email: true },
     });
 
-    // ✅ Send email (best effort)
-    try {
-      await smtp.sendMail({
-        from: process.env.ZOHO_EMAIL,
-        to: created.email,
-        subject: "Welcome to STAR Engineering – Your Portal Login",
-        html: welcomeEmailHTML({ name: created.name, email: created.email, password }),
-      });
-    } catch (mailErr) {
-      console.error("WELCOME EMAIL FAILED:", mailErr);
-    }
-
+    // ✅ IMPORTANT: respond immediately (prevents admin 15s timeout)
     res.json({ ok: true, customer: created });
+
+    // ✅ Send welcome email in background (Zoho can be slow)
+    setImmediate(async () => {
+      try {
+        await smtp.sendMail({
+          from: process.env.ZOHO_EMAIL,
+          to: created.email,
+          subject: "Welcome to STAR Engineering – Your Portal Login",
+          html: welcomeEmailHTML({
+            name: created.name,
+            email: created.email,
+            password,
+          }),
+        });
+        console.log("✅ WELCOME EMAIL SENT");
+      } catch (mailErr) {
+        console.error("❌ WELCOME EMAIL FAILED (ignored):", mailErr?.message || mailErr);
+      }
+    });
+
   } catch (e) {
     console.error(e);
-    res.status(500).json({ message: "Create failed", details: String(e.message || e) });
+    return res.status(500).json({ message: "Create failed", details: String(e.message || e) });
   }
 });
 
