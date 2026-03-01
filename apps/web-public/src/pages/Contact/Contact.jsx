@@ -122,28 +122,47 @@ async function onSubmit(e) {
       page: window.location.href,
     };
 
-    // ✅ Build email subject + body
-    const to = "corporate@stareng.co.in";
+    // ✅ 1) API call (server ko send)
+    await sendRequirement(payload);
 
+    // ✅ 2) Email compose body define
+    const to = "corporate@stareng.co.in";
     const subject =
       `${payload.subject}` +
       ` | ${payload.name}` +
       (payload.city ? ` - ${payload.city}` : "");
 
-const waText = buildWhatsAppMessage(payload);
-const waUrl = `https://wa.me/${917045276723}?text=${encodeURIComponent(waText)}`;
-window.location.href = waUrl;
-    // ✅ Open user's email compose (no server needed)
+    const materialLabel =
+      MATERIALS.find((m) => m.key === payload.material)?.label || payload.material;
+
+    const body =
+      `Hello STAR Engineering Team,\n\n` +
+      `Name: ${payload.name}\n` +
+      `Company: ${payload.company || "-"}\n` +
+      `Phone: ${payload.phone}\n` +
+      `Email: ${payload.email || "-"}\n` +
+      `City: ${payload.city}\n` +
+      `Material: ${materialLabel}\n` +
+      `Preferred Contact: ${payload.preferred}\n\n` +
+      `Requirement Details:\n${payload.details}\n\n` +
+      `Page: ${payload.page}\n`;
+
     const mailtoUrl =
       `mailto:${encodeURIComponent(to)}` +
       `?subject=${encodeURIComponent(subject)}` +
       `&body=${encodeURIComponent(body)}`;
 
-    // optional: show thanks screen before redirect
+    // ✅ 3) WhatsApp link (open in new tab, DO NOT redirect current page)
+    const waText = buildWhatsAppMessage(payload);
+    const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(waText)}`;
+
     setSent(true);
 
-    // ✅ redirect to mail client
+    // ✅ Open both (email first). New tab for whatsapp so current page doesn't leave.
     window.location.href = mailtoUrl;
+    setTimeout(() => {
+      window.open(waUrl, "_blank", "noopener,noreferrer");
+    }, 300);
   } catch (e2) {
     setErr(e2?.message || "Something went wrong");
   } finally {
