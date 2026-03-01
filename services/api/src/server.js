@@ -1063,18 +1063,14 @@ app.post("/customers", async (req, res) => {
           from: process.env.ZOHO_EMAIL,
           to: created.email,
           subject: "Welcome to STAR Engineering – Your Portal Login",
-          html: welcomeEmailHTML({
-            name: created.name,
-            email: created.email,
-            password,
-          }),
+          html: welcomeEmailHTML({ name: created.name, email: created.email, password }),
         });
         console.log("✅ WELCOME EMAIL SENT");
       } catch (mailErr) {
         console.error("❌ WELCOME EMAIL FAILED (ignored):", mailErr?.message || mailErr);
       }
     });
-
+return res.json({ ok: true, customer: created, emailSent: true });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Create failed", details: String(e.message || e) });
