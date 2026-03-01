@@ -47,7 +47,22 @@ function isValidEmail(v) {
   if (!s) return true; // optional
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
+function buildWhatsAppMessage(payload) {
+  const materialLabel =
+    MATERIALS.find((m) => m.key === payload.material)?.label || payload.material;
 
+  const company = payload.company ? payload.company : "your company";
+
+  // ✅ Single paragraph, professional
+  return (
+    `Hello STAR Engineering Team, I am ${payload.name} from ${company}. ` +
+    `I would like to enquire regarding ${materialLabel} for delivery at ${payload.city}. ` +
+    `Requirement details: ${payload.details}. ` +
+    `Kindly share availability, specifications, and your best quotation at the earliest. ` +
+    `You may contact me on ${payload.phone}${payload.email ? ` or email me at ${payload.email}` : ""}. ` +
+    `Regards, ${company}`
+  );
+}
 export default function Contact() {
   const loc = useLocation();
 
@@ -93,17 +108,11 @@ async function onSubmit(e) {
 
   setLoading(true);
 
-  // ✅ hard safety: even if something hangs, stop loader after 25s
-  const hardStop = setTimeout(() => {
-    setLoading(false);
-    setErr("Request taking too long. Please try again or use WhatsApp Now.");
-  }, 25000);
-
   try {
     const payload = {
       name: form.name.trim(),
       company: form.company.trim(),
-      phone: cleanPhone(form.phone),
+      phone: String(form.phone || "").replace(/\D/g, ""), // only digits
       email: form.email.trim(),
       city: form.city.trim(),
       material: form.material,
@@ -113,62 +122,31 @@ async function onSubmit(e) {
       page: window.location.href,
     };
 
-    // ✅ timeout fetch (AbortController)
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 20000);
+    // ✅ Build email subject + body
+    const to = "corporate@stareng.co.in";
 
-    let res;
-    try {
-      res = await fetch(`${API}/public/contact`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(t);
-    }
+    const subject =
+      `${payload.subject}` +
+      ` | ${payload.name}` +
+      (payload.city ? ` - ${payload.city}` : "");
 
-    // ✅ parse safely
-    let data = {};
-    try {
-      data = await res.json();
-    } catch {
-      data = {};
-    }
+const waText = buildWhatsAppMessage(payload);
+const waUrl = `https://wa.me/${917045276723}?text=${encodeURIComponent(waText)}`;
+window.location.href = waUrl;
+    // ✅ Open user's email compose (no server needed)
+    const mailtoUrl =
+      `mailto:${encodeURIComponent(to)}` +
+      `?subject=${encodeURIComponent(subject)}` +
+      `&body=${encodeURIComponent(body)}`;
 
-    if (!res.ok) {
-      throw new Error(data?.message || `Failed (${res.status})`);
-    }
-
+    // optional: show thanks screen before redirect
     setSent(true);
 
-    // ✅ WhatsApp open (some browsers block popups after async)
-    const waText =
-      `Hello STAR Engineering,\n\n` +
-      `Requirement Enquiry:\n` +
-      `Name: ${payload.name}\n` +
-      (payload.company ? `Company: ${payload.company}\n` : "") +
-      `Phone: ${payload.phone}\n` +
-      (payload.email ? `Email: ${payload.email}\n` : "") +
-      `City: ${payload.city}\n` +
-      `Material: ${payload.material}\n` +
-      `Details: ${payload.details}\n`;
-
-    const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(waText)}`;
-
-    // ✅ best for popup blockers:
-    window.location.href = waUrl; // redirect instead of window.open
+    // ✅ redirect to mail client
+    window.location.href = mailtoUrl;
   } catch (e2) {
-    // ✅ if timeout/abort or network hang
-    const msg =
-      e2?.name === "AbortError"
-        ? "Server is not responding (timeout). Use WhatsApp Now."
-        : (e2?.message || "Something went wrong");
-
-    setErr(msg);
+    setErr(e2?.message || "Something went wrong");
   } finally {
-    clearTimeout(hardStop);
     setLoading(false);
   }
 }
@@ -190,30 +168,44 @@ async function onSubmit(e) {
         </p>
       </div>
 
-      {sent ? (
-        <div className="contactThanks card">
-          <div className="thanksTop">
-            <div className="thanksTick">✓</div>
-            <div>
-              <div className="h2" style={{ marginBottom: 6 }}>
-                Thank you! We received your requirement.
-              </div>
-              <div className="sub">
-                For fastest support, please call Sales:{" "}
-                <a className="link" href="tel:+917045276723">+91-7045276723</a> (8:30 am to 7:30 pm)
-              </div>
-            </div>
-          </div>
-
-          <div className="thanksActions">
-            <a className="btn" href="tel:+917045276723">Call Sales →</a>
-            <a className="btnGhost" href="mailto:corporate@stareng.co.in">Email Corporate →</a>
-            <a className="btnGhost" href={`https://wa.me/${WHATSAPP_NUMBER}`} target="_blank" rel="noreferrer">
-              WhatsApp →
-            </a>
-          </div>
+{sent ? (
+  <div className="contactThanks card">
+    <div className="thanksTop">
+      <div className="thanksTick">✉</div>
+      <div>
+        <div className="h2" style={{ marginBottom: 6 }}>
+          Your message draft is ready.
         </div>
-      ) : (
+        <div className="sub">
+          Please complete the process in your email or WhatsApp window to send the enquiry.
+          If it didn’t open, use one of the options below.
+        </div>
+      </div>
+    </div>
+
+    <div className="thanksActions">
+      <a
+        className="btn"
+        href="mailto:corporate@stareng.co.in"
+      >
+        Open Email Again →
+      </a>
+
+      <a
+        className="btnGhost"
+        href={`https://wa.me/$917045276723?text=${encodeURIComponent(buildWhatsAppMessage(form))}`}
+        target="_blank"
+        rel="noreferrer"
+      >
+        Open WhatsApp →
+      </a>
+
+      <a className="btnGhost" href="tel:+917045276723">
+        Call Sales →
+      </a>
+    </div>
+  </div>
+) : (
         <div className="contactGrid">
           <div className="card contactInfo">
             <div className="h2" style={{ marginBottom: 10 }}>STAR ENGINEERING</div>
@@ -408,7 +400,7 @@ async function onSubmit(e) {
         .thanksTop{ display:flex; gap:12px; align-items:flex-start; }
         .thanksTick{
           width: 42px; height: 42px; border-radius: 16px;
-          background: rgba(16,185,129,.14); color: rgb(16,185,129);
+          background: rgba(59,130,246,.12); color: rgb(59,130,246);
           display:flex; align-items:center; justify-content:center;
           font-weight: 900; font-size: 18px; border: 1px solid rgba(16,185,129,.25);
           flex: 0 0 auto;

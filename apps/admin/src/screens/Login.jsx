@@ -9,11 +9,10 @@ const block = (e) => {
 };
 
 export default function Login() {
-  const [step, setStep] = useState(1); // 1=creds+captcha, 2=otp
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  // step 1 fields
+  // fields
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -21,10 +20,6 @@ export default function Login() {
   const [captchaId, setCaptchaId] = useState("");
   const [captchaQ, setCaptchaQ] = useState("");
   const [captchaAns, setCaptchaAns] = useState("");
-
-  // step2 fields
-  const [tempToken, setTempToken] = useState("");
-  const [otp, setOtp] = useState("");
 
   const brand = useMemo(
     () => ({
@@ -37,7 +32,6 @@ export default function Login() {
   async function loadCaptcha() {
     setErr("");
     try {
-      // ✅ api.adminCaptcha() already returns res.data (object)
       const data = await api.adminCaptcha();
       setCaptchaId(data?.captchaId || "");
       setCaptchaQ(data?.question || "");
@@ -54,7 +48,7 @@ export default function Login() {
     loadCaptcha();
   }, []);
 
-  async function submitStep1(e) {
+  async function onSubmit(e) {
     e.preventDefault();
     setErr("");
 
@@ -65,44 +59,17 @@ export default function Login() {
 
     setLoading(true);
     try {
-      // ✅ api.adminStep1() already returns res.data (object)
-      const data = await api.adminStep1({
+      // ✅ NO OTP now
+      const data = await api.adminLogin({
         email: email.trim(),
         password,
         captchaId,
         captchaAnswer: captchaAns.trim(),
       });
 
-      setTempToken(data?.tempToken || "");
-      setStep(2);
-      setOtp("");
-    } catch (e2) {
-      setErr(e2?.response?.data?.message || e2?.message || "Login failed");
-      await loadCaptcha();
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function submitStep2(e) {
-    e.preventDefault();
-    setErr("");
-    if (!otp.trim()) return setErr("Enter OTP");
-    if (!tempToken) return setErr("Session missing. Please login again.");
-
-    setLoading(true);
-    try {
-      // ✅ api.adminStep2() already returns res.data (object)
-      const data = await api.adminStep2({
-        tempToken,
-        otp: otp.trim(),
-      });
-
       const token = data?.token || "";
       if (!token) {
-        setErr("Token not received. Please login again.");
-        setStep(1);
-        setTempToken("");
+        setErr("Token not received. Please try again.");
         await loadCaptcha();
         return;
       }
@@ -110,7 +77,8 @@ export default function Login() {
       localStorage.setItem("token", token);
       window.location.href = "/";
     } catch (e2) {
-      setErr(e2?.response?.data?.message || e2?.message || "OTP failed");
+      setErr(e2?.response?.data?.message || e2?.message || "Login failed");
+      await loadCaptcha();
     } finally {
       setLoading(false);
     }
@@ -139,137 +107,81 @@ export default function Login() {
         {loading && <Loader />}
 
         {!loading && (
-          <>
-            {step === 1 && (
-              <form onSubmit={submitStep1} style={{ width: "100%" }}>
-                {/* anti-autofill decoys */}
-                <input style={{ display: "none" }} autoComplete="username" />
-                <input style={{ display: "none" }} autoComplete="current-password" />
+          <form onSubmit={onSubmit} style={{ width: "100%" }}>
+            {/* anti-autofill decoys */}
+            <input style={{ display: "none" }} autoComplete="username" />
+            <input style={{ display: "none" }} autoComplete="current-password" />
 
-                <label style={styles.label}>Admin ID</label>
-                <input
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter corporate email"
-                  style={styles.input}
-                  inputMode="email"
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  onCopy={block}
-                  onCut={block}
-                  onPaste={block}
-                  onContextMenu={block}
-                />
+            <label style={styles.label}>Admin ID</label>
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter corporate email"
+              style={styles.input}
+              inputMode="email"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              onCopy={block}
+              onCut={block}
+              onPaste={block}
+              onContextMenu={block}
+            />
 
-                <label style={{ ...styles.label, marginTop: 12 }}>Password</label>
-                <input
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter password"
-                  style={styles.input}
-                  type="password"
-                  autoComplete="new-password"
-                  autoCorrect="off"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  onCopy={block}
-                  onCut={block}
-                  onPaste={block}
-                  onContextMenu={block}
-                />
+            <label style={{ ...styles.label, marginTop: 12 }}>Password</label>
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter password"
+              style={styles.input}
+              type="password"
+              autoComplete="new-password"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              onCopy={block}
+              onCut={block}
+              onPaste={block}
+              onContextMenu={block}
+            />
 
-                <div style={styles.captchaWrap}>
-                  <div style={styles.captchaQ}>
-                    <div style={{ fontSize: 12, opacity: 0.7 }}>Captcha</div>
-                    <div style={{ fontWeight: 700 }}>{captchaQ || "—"}</div>
-                  </div>
-                  <button type="button" onClick={loadCaptcha} style={styles.ghostBtn}>
-                    Refresh
-                  </button>
-                </div>
+            <div style={styles.captchaWrap}>
+              <div style={styles.captchaQ}>
+                <div style={{ fontSize: 12, opacity: 0.7 }}>Captcha</div>
+                <div style={{ fontWeight: 700 }}>{captchaQ || "—"}</div>
+              </div>
+              <button type="button" onClick={loadCaptcha} style={styles.ghostBtn}>
+                Refresh
+              </button>
+            </div>
 
-                <input
-                  value={captchaAns}
-                  onChange={(e) => setCaptchaAns(e.target.value)}
-                  placeholder="Answer"
-                  style={styles.input}
-                  inputMode="numeric"
-                  autoComplete="off"
-                  onCopy={block}
-                  onCut={block}
-                  onPaste={block}
-                  onContextMenu={block}
-                />
+            <input
+              value={captchaAns}
+              onChange={(e) => setCaptchaAns(e.target.value)}
+              placeholder="Answer"
+              style={styles.input}
+              inputMode="numeric"
+              autoComplete="off"
+              onCopy={block}
+              onCut={block}
+              onPaste={block}
+              onContextMenu={block}
+            />
 
-                {err ? <div style={styles.err}>{err}</div> : null}
+            {err ? <div style={styles.err}>{err}</div> : null}
 
-                <motion.button
-                  whileTap={{ scale: 0.99 }}
-                  whileHover={{ y: -1 }}
-                  type="submit"
-                  style={styles.primaryBtn}
-                >
-                  Continue
-                </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.99 }}
+              whileHover={{ y: -1 }}
+              type="submit"
+              style={styles.primaryBtn}
+            >
+              Login
+            </motion.button>
 
-                <div style={styles.note}>Copy/Paste & Autofill are blocked for security.</div>
-              </form>
-            )}
-
-            {step === 2 && (
-              <form onSubmit={submitStep2} style={{ width: "100%" }}>
-                <div style={styles.badge}>2FA Enabled</div>
-
-                <div style={styles.otpText}>
-                  Enter the <b>6-digit OTP</b> to complete login.
-                  <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-                    (OTP EmailJS se aayega. Agar nahi aaya, server console check karo.)
-                  </div>
-                </div>
-
-                <label style={styles.label}>OTP</label>
-                <input
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  placeholder="••••••"
-                  style={{ ...styles.input, letterSpacing: 6, textAlign: "center" }}
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  onCopy={block}
-                  onCut={block}
-                  onPaste={block}
-                  onContextMenu={block}
-                />
-
-                {err ? <div style={styles.err}>{err}</div> : null}
-
-                <motion.button
-                  whileTap={{ scale: 0.99 }}
-                  whileHover={{ y: -1 }}
-                  type="submit"
-                  style={styles.primaryBtn}
-                >
-                  Verify & Login
-                </motion.button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep(1);
-                    setTempToken("");
-                    setOtp("");
-                    setErr("");
-                    loadCaptcha();
-                  }}
-                  style={styles.backBtn}
-                >
-                  ← Back
-                </button>
-              </form>
-            )}
-          </>
+            <div style={styles.note}>Copy/Paste & Autofill are blocked for security.</div>
+          </form>
         )}
       </motion.div>
 
@@ -367,15 +279,7 @@ const styles = {
     fontWeight: 900,
     fontSize: 14,
   },
-  backBtn: {
-    width: "100%",
-    marginTop: 10,
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid rgba(2,6,23,0.12)",
-    background: "white",
-    fontWeight: 800,
-  },
+
   err: {
     marginTop: 10,
     background: "rgba(239,68,68,0.10)",
@@ -387,17 +291,5 @@ const styles = {
     fontWeight: 700,
   },
   note: { marginTop: 10, fontSize: 12, opacity: 0.75, textAlign: "center" },
-
-  badge: {
-    display: "inline-block",
-    padding: "6px 10px",
-    borderRadius: 999,
-    background: "rgba(16,185,129,0.12)",
-    border: "1px solid rgba(16,185,129,0.28)",
-    fontSize: 12,
-    fontWeight: 900,
-    color: "#065f46",
-  },
-  otpText: { marginTop: 10, marginBottom: 14, fontSize: 13, color: "#0f172a" },
   footer: { position: "absolute", bottom: 14, fontSize: 12, opacity: 0.6 },
 };

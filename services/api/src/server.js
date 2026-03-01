@@ -14,7 +14,11 @@ const pdfParseLib = require("pdf-parse");
 const pdfParse = typeof pdfParseLib === "function" ? pdfParseLib : pdfParseLib.default;
 
 
+
 dotenv.config();
+const { Resend } = require("resend");
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 const dns = require("dns");
 dns.setDefaultResultOrder("ipv4first");
 
@@ -33,26 +37,19 @@ async function sendOtpEmail({ to_email, to_name, otp, expiry_minutes }) {
     throw new Error("EmailJS env missing");
   }
 
-const payload = {
-  name: form.name.trim(),
-  company: form.company.trim(),
-  phone: String(form.phone || "").replace(/\D/g, ""), // ✅ only digits
-  email: form.email.trim(),
-  city: form.city.trim(),
-  material: form.material,
-  details: form.details.trim(),
-  subject: (form.subject || DEFAULT_SUBJECT).trim(),
-  preferred: form.preferred,
-  page: window.location.href,
-};
+  const payload = {
+    service_id: EMAILJS_SERVICE_ID,
+    template_id: EMAILJS_TEMPLATE_ID,
+    user_id: EMAILJS_PUBLIC_KEY,
+    template_params: {
+      to_email,
+      to_name,
+      otp,
+      expiry_minutes,
+    },
+  };
 
-
-console.log("SENDING PAYLOAD:", payload);
-if (!res.ok) {
-  console.log("CONTACT FAIL:", res.status, data);
-  throw new Error(data?.message || `Failed (${res.status})`);
-}
-
+  // optional private key
   if (EMAILJS_PRIVATE_KEY) payload.accessToken = EMAILJS_PRIVATE_KEY;
 
   await axios.post("https://api.emailjs.com/api/v1.0/email/send", payload, {
@@ -696,55 +693,38 @@ app.post("/public/contact", async (req, res) => {
   });
 
   // ✅ background best-effort (email failure should NEVER affect response)
-  setImmediate(async () => {
-    try {
-      if (!process.env.ZOHO_EMAIL || !process.env.ZOHO_APP_PASSWORD) {
-        console.error("CONTACT: ZOHO env missing");
-        return;
-      }
-
-      const toEmail = process.env.CONTACT_TO_EMAIL || "corporate@stareng.co.in";
-      const fromEmail = process.env.ZOHO_EMAIL;
-
-      // ✅ hard timeout wrapper so it doesn't hang forever
-      const withTimeout = (p, ms, label) =>
-        Promise.race([
-          p,
-          new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} timeout`)), ms)),
-        ]);
-
-      await withTimeout(
-        smtp.sendMail({
-          from: fromEmail,
-          to: toEmail,
-          subject,
-          html: contactInquiryEmailHTML({
-            name, company, phone, email, city, material, details, preferred, subject, page,
-          }),
-          replyTo: email || undefined,
-        }),
-        12000,
-        "smtp.sendMail(admin)"
-      );
-
-      if (email) {
-        await withTimeout(
-          smtp.sendMail({
-            from: fromEmail,
-            to: email,
-            subject: "We received your requirement – STAR Engineering",
-            html: contactCustomerAckEmailHTML({ name, subject }),
-          }),
-          12000,
-          "smtp.sendMail(customer)"
-        );
-      }
-
-      console.log("✅ CONTACT EMAIL SENT");
-    } catch (e) {
-      console.error("❌ CONTACT EMAIL FAILED (ignored):", e?.message || e);
+setImmediate(async () => {
+  try {
+    if (!process.env.RESEND_API_KEY) {
+      console.error("CONTACT: RESEND_API_KEY missing");
+      return;
     }
-  });
+
+    // ✅ corporate (your team)
+    await resend.emails.send({
+      from: "STAR Engineering <noreply@stareng.co.in>",
+      to: process.env.CONTACT_TO_EMAIL || "corporate@stareng.co.in",
+      subject,
+      html: contactInquiryEmailHTML({
+        name, company, phone, email, city, material, details, preferred, subject, page,
+      }),
+    });
+
+    // ✅ optional customer acknowledgement (send only if customer email exists)
+    if (email) {
+      await resend.emails.send({
+        from: "STAR Engineering <noreply@stareng.co.in>",
+        to: email,
+        subject: `We received your requirement – STAR Engineering`,
+        html: contactCustomerAckEmailHTML({ name, subject }),
+      });
+    }
+
+    console.log("✅ CONTACT EMAIL SENT (Resend)");
+  } catch (e) {
+    console.error("❌ CONTACT EMAIL FAILED (ignored):", e?.message || e);
+  }
+});
 });
 app.get("/admin/leads", async (req, res) => {
   try {
@@ -772,7 +752,46 @@ app.get("/admin/captcha", (req, res) => {
 
 
 
-// ✅ Step1: verify captcha + admin creds -> send tempToken
+// ✅ Admin Login (NO OTP) — captcha + creds => JWT
+app.post("/admin/login", async (req, res) => {
+  try {
+    const { email, password, captchaId, captchaAnswer } = req.body || {};
+
+    if (!email || !password || !captchaId || !captchaAnswer) {
+      return res.status(400).json({ message: "Missing fields" });
+    }
+
+    const cap = captchaStore.get(captchaId);
+    if (!cap || cap.exp < now()) {
+      return res.status(400).json({ message: "Captcha expired. Refresh." });
+    }
+    captchaStore.delete(captchaId);
+
+    if (String(captchaAnswer).trim() !== String(cap.answer).trim()) {
+      return res.status(401).json({ message: "Captcha incorrect" });
+    }
+
+    if (String(email).trim().toLowerCase() !== String(ADMIN_EMAIL).trim().toLowerCase()) {
+      return res.status(401).json({ message: "Invalid Admin ID" });
+    }
+
+    if (String(password) !== String(ADMIN_PASSWORD)) {
+      return res.status(401).json({ message: "Invalid Password" });
+    }
+
+    const token = jwt.sign(
+      { role: "ADMIN", email: ADMIN_EMAIL },
+      JWT_SECRET,
+      { expiresIn: "12h" }
+    );
+
+    return res.json({ token });
+  } catch (e) {
+    console.error("ADMIN LOGIN (NO OTP) ERROR:", e?.message || e);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+// ✅ BACKWARD COMPAT: old frontend calls this
 app.post("/admin/login-step1", async (req, res) => {
   try {
     const { email, password, captchaId, captchaAnswer } = req.body || {};
@@ -799,70 +818,13 @@ app.post("/admin/login-step1", async (req, res) => {
       return res.status(401).json({ message: "Invalid Password" });
     }
 
-    // ✅ Generate OTP (6 digits)
-    const otp = String(randInt(100000, 999999));
-    const tempToken = makeId();
-
-    tempStore.set(tempToken, {
-      otp,
-      exp: now() + 3 * 60 * 1000, // 3 min
-      tries: 0,
-    });
-
-    // For now show OTP in server console (later email/SMS)
-    // ✅ Send OTP via EmailJS
-await sendOtpEmail({
-  to_email: ADMIN_EMAIL,
-  to_name: "Corporate Admin",
-  otp,
-  expiry_minutes: 3,
-});
-
-    res.json({ tempToken, requires2FA: true });
+    const token = jwt.sign({ role: "ADMIN", email: ADMIN_EMAIL }, JWT_SECRET, { expiresIn: "12h" });
+    return res.json({ token });
   } catch (e) {
-    console.error("STEP1 ERROR:", e?.response?.data || e?.message || e);
-    return res.status(500).json({
-      message: "Server error",
-      details: e?.response?.data || e?.message || String(e),
-       });
+    console.error("ADMIN LOGIN STEP1 ERROR:", e?.message || e);
+    return res.status(500).json({ message: "Server error" });
   }
 });
-
-// ✅ Step2: verify OTP -> issue JWT
-app.post("/admin/login-step2", async (req, res) => {
-  try {
-    const { tempToken, otp } = req.body || {};
-    if (!tempToken || !otp) return res.status(400).json({ message: "Missing fields" });
-
-    const rec = tempStore.get(tempToken);
-    if (!rec || rec.exp < now()) {
-      return res.status(401).json({ message: "OTP expired. Login again." });
-    }
-
-    rec.tries += 1;
-    if (rec.tries > 5) {
-      tempStore.delete(tempToken);
-      return res.status(429).json({ message: "Too many attempts. Login again." });
-    }
-
-    if (String(otp).trim() !== String(rec.otp)) {
-      return res.status(401).json({ message: "Invalid OTP" });
-    }
-
-    tempStore.delete(tempToken);
-
-    const token = jwt.sign(
-      { role: "ADMIN", email: ADMIN_EMAIL },
-      JWT_SECRET,
-      { expiresIn: "12h" }
-    );
-
-    res.json({ token });
-  } catch (e) {
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
 /* =========================
    CREATE ADMIN IF NOT EXISTS
 ========================= */

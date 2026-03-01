@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000",
+  baseURL: import.meta.env.VITE_API_URL || "https://api.stareng.co.in",
   timeout: 15000,
 });
 
@@ -20,8 +20,9 @@ async function getData(promise) {
 export const api = {
   // ✅ Admin Auth
   adminCaptcha: () => getData(API.get("/admin/captcha")),
-  adminStep1: (data) => getData(API.post("/admin/login-step1", data)),
-  adminStep2: (data) => getData(API.post("/admin/login-step2", data)),
+
+  // ✅ NEW: Admin Login (NO OTP) — frontend will call this
+  adminLogin: (data) => getData(API.post("/admin/login", data)),
 
   // ✅ Dashboard
   dashboard: (params) => getData(API.get("/dashboard", { params })),
@@ -71,18 +72,23 @@ export const api = {
   deleteTransactionPDF: (id, pdfId) =>
     getData(API.delete(`/transactions/${id}/pdfs/${pdfId}`)),
 
-  // ✅ Admin Ledger
-// ✅ Admin Ledger (JSON) — uses existing backend route /ledger/:partyId
-adminLedger: (partyId, from, to) =>
-  getData(API.get(`/ledger/${encodeURIComponent(partyId)}`, { params: { from, to } })),
+  // ✅ Admin Ledger (JSON) — uses existing backend route /ledger/:partyId
+  adminLedger: (partyId, from, to) =>
+    getData(
+      API.get(`/ledger/${encodeURIComponent(partyId)}`, {
+        params: { from, to },
+      })
+    ),
 
-// ✅ Admin Ledger PDF — uses existing backend route /ledger/:partyId/pdf
-exportAdminLedgerPdf: (partyId, from, to, token) => {
-  const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
-  return `${base}/ledger/${encodeURIComponent(partyId)}/pdf?from=${encodeURIComponent(
-    from
-  )}&to=${encodeURIComponent(to)}&token=${encodeURIComponent(token)}`;
-},
+  // ✅ Admin Ledger PDF — uses existing backend route /ledger/:partyId/pdf
+  exportAdminLedgerPdf: (partyId, from, to, token) => {
+    const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    return `${base}/ledger/${encodeURIComponent(
+      partyId
+    )}/pdf?from=${encodeURIComponent(from)}&to=${encodeURIComponent(
+      to
+    )}&token=${encodeURIComponent(token)}`;
+  },
 };
 
 export default API;
