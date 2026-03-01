@@ -21,7 +21,19 @@ const WHATSAPP_NUMBER = "917045276723"; // ✅ without +
 const DEFAULT_SUBJECT = "STAR ENGINEERING – Requirement Enquiry";
 
 // ✅ API base (dev/prod)
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API = import.meta.env.VITE_API_URL || "https://api.stareng.co.in";
+
+async function sendRequirement(payload) {
+  const res = await fetch(`${API}/public/contact`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || "Failed");
+  return data;
+}
 
 function cleanPhone(v) {
   return String(v || "")
