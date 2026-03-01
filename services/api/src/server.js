@@ -57,12 +57,23 @@ async function sendOtpEmail({ to_email, to_name, otp, expiry_minutes }) {
 ========================= */
 const smtp = nodemailer.createTransport({
   host: process.env.ZOHO_SMTP_HOST || "smtp.zoho.in",
-  port: Number(process.env.ZOHO_SMTP_PORT || 465),
-  secure: String(process.env.ZOHO_SMTP_SECURE || "true") === "true",
+  port: Number(process.env.ZOHO_SMTP_PORT || 587),
+  secure: String(process.env.ZOHO_SMTP_SECURE || "false") === "true", // ✅ false for 587
   auth: {
     user: process.env.ZOHO_EMAIL,
     pass: process.env.ZOHO_APP_PASSWORD,
   },
+  tls: {
+    // ✅ prevents some hosting TLS handshake stalls
+    rejectUnauthorized: false,
+  },
+  connectionTimeout: 15000,
+  greetingTimeout: 15000,
+  socketTimeout: 20000,
+});
+smtp.verify((err, success) => {
+  if (err) console.error("❌ SMTP VERIFY FAILED:", err?.message || err);
+  else console.log("✅ SMTP READY");
 });
 
 function welcomeEmailHTML({ name, email, password }) {
