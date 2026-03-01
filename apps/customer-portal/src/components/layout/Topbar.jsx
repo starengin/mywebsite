@@ -19,7 +19,7 @@ logout();
 
 // ✅ always go to public website home (no back to portal pages)
 const PUBLIC_HOME =
-  import.meta.env.VITE_PUBLIC_HOME_URL || "http://localhost:5173/";
+  import.meta.env.VITE_PUBLIC_HOME_URL || "https://www.stareng.co.in";
 
 window.location.replace(PUBLIC_HOME);
   };

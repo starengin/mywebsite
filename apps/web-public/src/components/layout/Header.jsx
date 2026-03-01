@@ -3,15 +3,15 @@ import { NavLink } from "react-router-dom";
 import MobileMenu from "./MobileMenu";
 import Button from "../ui/Button";
 
-const CUSTOMER_URL = import.meta.env.VITE_CUSTOMER_PORTAL_URL || "";
+const CUSTOMER_URL = import.meta.env.VITE_CUSTOMER_PORTAL_URL || "https://portal.stareng.co.in";
 
 export default function Header() {
   const [open, setOpen] = useState(false);
 
 const goLogin = () => {
-  if (!CUSTOMER_URL) return; // no redirect if not set
-  if (window.location.href === CUSTOMER_URL) return; // prevent loop
-  window.location.href = CUSTOMER_URL;
+  if (!CUSTOMER_PORTAL_URL) return; // no redirect if not set
+  if (window.location.href === CUSTOMER_PORTAL_URL) return; // prevent loop
+  window.location.href = CUSTOMER_PORTAL_URL;
 };
 
   return (

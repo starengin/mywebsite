@@ -306,13 +306,6 @@ function welcomeEmailHTML({ name, email, password }) {
 </table>
 `;
 }
-function esc(s = "") {
-  return String(s)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
 
 // ✅ Corporate inquiry email (premium)
 function contactInquiryEmailHTML({
@@ -502,200 +495,6 @@ box-shadow: 0 24px 60px rgba(17,24,39,0.24), 0 10px 24px rgba(17,24,39,0.12); ">
   </tbody>
 </table>`;
 }
-function contactInquiryEmailHTML({
-  name, company, phone, email, city, material, details, preferred, subject, page,
-}) {
-  const companyName = process.env.COMPANY_NAME || "STAR ENGINEERING";
-  const logoUrl =
-    process.env.MAIL_LOGO_URL ||
-    "https://docs5.odoo.com/documents/content/Zir5Nx_CQDG3RHRyCDjt9gof5?download=0";
-
-  return `
-<table align="center" width="100%" cellpadding="0" cellspacing="0" style="
-  max-width:600px; margin:30px auto; border-radius:16px; overflow:hidden;
-  font-family:Arial,Helvetica,sans-serif;
-  background:
-    radial-gradient(900px 420px at 15% 0%, rgba(255,0,102,0.16), transparent 60%),
-    radial-gradient(760px 380px at 95% 18%, rgba(0,102,255,0.15), transparent 55%),
-    radial-gradient(920px 520px at 80% 110%, rgba(255,170,0,0.16), transparent 60%),
-    radial-gradient(820px 420px at 52% 105%, rgba(163,0,255,0.12), transparent 65%),
-    linear-gradient(145deg,#fbfcff,#f2f6ff,#ffffff);
-  box-shadow: 0 24px 60px rgba(17,24,39,0.24), 0 10px 24px rgba(17,24,39,0.12);
-">
-  <tbody>
-
-    <!-- HEADER -->
-    <tr>
-      <td style="
-        background:
-          radial-gradient(900px 260px at 18% 0%, rgba(255,220,160,0.18), transparent 55%),
-          linear-gradient(135deg,#3b0000,#6a0000,#9a0000,#a100ff,#ff0066,#ff7a00);
-        padding:22px 24px;
-        color:#ffffff;
-        box-shadow: inset 0 -10px 20px rgba(0,0,0,0.30), 0 10px 22px rgba(0,0,0,0.18);
-      ">
-        <div style="height:4px;background:linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,232,190,0.58), rgba(255,255,255,0.10));border-radius:999px;margin-bottom:14px;box-shadow:0 2px 10px rgba(0,0,0,0.25);"></div>
-
-        <table width="100%" cellpadding="0" cellspacing="0">
-          <tbody>
-            <tr>
-              <td width="100" valign="middle">
-                <img src="${logoUrl}" alt="${companyName}" style="max-width:80px;display:block;border-radius:10px;box-shadow:0 14px 26px rgba(0,0,0,0.35);border:1px solid rgba(255,232,190,0.45);">
-              </td>
-              <td valign="middle" style="padding-left:12px;">
-                <h1 style="margin:0;font-size:22px;letter-spacing:1px;color:#ffffff;font-weight:bold;text-shadow:0 4px 14px rgba(0,0,0,0.50);">
-                  ${companyName}
-                </h1>
-                <p style="margin:6px 0 0 0;font-size:15px;color:#fff1f7;font-weight:bold;text-shadow:0 3px 12px rgba(0,0,0,0.45);">
-                  New Requirement / Inquiry
-                </p>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-      </td>
-    </tr>
-
-    <!-- BODY -->
-    <tr>
-      <td style="padding:0">
-        <div style="
-          padding:22px 20px 18px 20px;
-          color:#111827;
-          background:
-            radial-gradient(900px 260px at 12% 0%, rgba(255,170,0,0.12), transparent 60%),
-            radial-gradient(820px 240px at 88% 0%, rgba(163,0,255,0.10), transparent 60%),
-            linear-gradient(180deg,rgba(255,255,255,0.92),rgba(255,255,255,0.82));
-          border-top:1px solid rgba(255,232,190,0.35);
-        ">
-
-          <p style="font-size:16px;margin:0 0 12px 0;">
-            Hello Team,<br>
-            <b>New inquiry received from website.</b>
-          </p>
-
-          <p style="font-size:15px; line-height:1.8; margin:0 0 18px 0; color:#1f2937;">
-            Subject: <b>${subject || "Requirement Enquiry"}</b><br>
-            Please contact the customer as per preference and process the requirement.
-          </p>
-
-          <div style="
-            border-radius:12px;
-            overflow:hidden;
-            border:1px solid rgba(255,232,190,0.55);
-            box-shadow: 0 16px 30px rgba(17,24,39,0.14), inset 0 1px 0 rgba(255,255,255,0.78);
-            background:linear-gradient(180deg,rgba(255,255,255,0.95),rgba(255,255,255,0.88));
-          ">
-            <table width="100%" cellpadding="10" cellspacing="0" style="font-size:15px;font-family:Arial,Helvetica,sans-serif;border-collapse:collapse;">
-              <tbody>
-                <tr style="background:linear-gradient(90deg,#fff0f0,#ffffff);">
-                  <td width="45%" style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);"><b>Name</b></td>
-                  <td style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);">${name || "-"}</td>
-                </tr>
-                <tr style="background:linear-gradient(90deg,#ffffff,#ffffff);">
-                  <td style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);"><b>Company</b></td>
-                  <td style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);">${company || "-"}</td>
-                </tr>
-                <tr style="background:linear-gradient(90deg,#eef4ff,#ffffff);">
-                  <td style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);"><b>Phone</b></td>
-                  <td style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);"><b style="color:#111827;">${phone || "-"}</b></td>
-                </tr>
-                <tr style="background:linear-gradient(90deg,#fff6ec,#ffffff);">
-                  <td style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);"><b>Email</b></td>
-                  <td style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);">${email || "-"}</td>
-                </tr>
-                <tr style="background:linear-gradient(90deg,#ffffff,#ffffff);">
-                  <td style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);"><b>City / Location</b></td>
-                  <td style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);">${city || "-"}</td>
-                </tr>
-                <tr style="background:linear-gradient(90deg,#fff0f0,#ffffff);">
-                  <td style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);"><b>Material</b></td>
-                  <td style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);"><span style="font-weight:bold;color:#7a0000;">${material || "ALL"}</span></td>
-                </tr>
-                <tr style="background:linear-gradient(90deg,#f6f0ff,#ffffff);">
-                  <td style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);"><b>Preferred Contact</b></td>
-                  <td style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);">${preferred || "Call"}</td>
-                </tr>
-                <tr style="background:linear-gradient(90deg,#ffffff,#ffffff);">
-                  <td style="padding:12px 14px;"><b>Requirement Details</b></td>
-                  <td style="padding:12px 14px; line-height:1.8;">${details || "-"}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div style="margin-top:16px;padding:16px;border-radius:12px;background:linear-gradient(180deg,#ffffff,#fff7fb);border:1px dashed rgba(255,170,0,0.70);">
-            <p style="font-size:15px; margin:0; color:#1f2937;">
-              Page Source: <span style="color:#6b7280;">${page || "-"}</span>
-            </p>
-          </div>
-
-          <div style="margin-top:18px; text-align:center;">
-            <a href="https://wa.me/917045276723" target="_blank" style="
-              display:inline-block;
-              background:linear-gradient(135deg,#3b0000,#a100ff,#ff0066,#ff7a00);
-              color:#ffffff;
-              padding:12px 18px;
-              text-decoration:none;
-              border-radius:999px;
-              font-size:14px;
-              font-weight:bold;
-              box-shadow:0 10px 22px rgba(0,0,0,0.20);
-              border:1px solid rgba(255,232,190,0.35);
-            ">Open WhatsApp →</a>
-          </div>
-
-        </div>
-      </td>
-    </tr>
-
-    <!-- FOOTER -->
-    <tr>
-      <td style="
-        background:
-          radial-gradient(900px 220px at 20% 0%, rgba(255,0,102,0.10), transparent 60%),
-          radial-gradient(900px 220px at 80% 0%, rgba(0,102,255,0.10), transparent 60%),
-          linear-gradient(180deg,#f4f4f6,#efeff2);
-        padding:16px;
-        text-align:center;
-        font-size:12px;
-        color:#6b7280;
-        border-top:1px solid rgba(17,24,39,0.08);
-      ">
-        <div style="font-weight:bold; color:#111827; margin-bottom:6px;">
-          System-generated inquiry email. Please do not reply.
-        </div>
-
-        <div style="height:2px;width:160px;margin:10px auto;border-radius:999px;background:linear-gradient(90deg, rgba(161,0,255,0.25), rgba(255,122,0,0.35), rgba(0,102,255,0.25));"></div>
-
-        <div style="line-height:1.7;">
-          📧 <a target="_blank" href="mailto:corporate@stareng.co.in" style="color:#a100ff;text-decoration:none;font-weight:bold;">
-            corporate@stareng.co.in
-          </a><br>
-          💬 <a target="_blank" href="https://wa.me/917045276723" style="color:#111827;text-decoration:none;font-weight:bold;">
-            WhatsApp: +91-7045276723
-          </a><br>
-          🌐 <a href="https://www.stareng.co.in" style="color:#111827;text-decoration:none;font-weight:bold;" target="_blank">
-            www.stareng.co.in
-          </a>
-        </div>
-
-        <div style="height:2px;width:160px;margin:10px auto;border-radius:999px;background:linear-gradient(90deg, rgba(161,0,255,0.25), rgba(255,122,0,0.35), rgba(0,102,255,0.25));"></div>
-
-        <div style="margin-top:6px; line-height:1.7;">
-          Terms &amp; Conditions:
-          <a href="https://www.stareng.co.in/terms" style="color:#6b7280; text-decoration:none;" target="_blank">
-            www.stareng.co.in/terms
-          </a>
-        </div>
-      </td>
-    </tr>
-
-  </tbody>
-</table>
-`;
-}
 function esc(s = "") {
   return String(s)
     .replaceAll("&", "&amp;")
@@ -703,14 +502,6 @@ function esc(s = "") {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 }
-const ALLOWED_ORIGINS = [
-  "https://portal.stareng.co.in",
-  "https://www.stareng.co.in",
-  "https://stareng.co.in",
-  "http://localhost:5173",
-  "http://localhost:5174",
-];
-
 // ✅ allow any vercel preview (optional but best)
 function isAllowedOrigin(origin) {
   try {
@@ -724,25 +515,26 @@ function isAllowedOrigin(origin) {
 
 const app = express();
 const prisma = new PrismaClient();
-
-// ✅ CORS (MUST be before routes)
-app.use(cors({
+const ALLOWED_ORIGINS = [
+  "https://portal.stareng.co.in",
+  "https://www.stareng.co.in",
+  "https://stareng.co.in",
+  "http://localhost:5173",
+  "http://localhost:5174",
+];
+const corsOptions = {
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true); // Postman / server-to-server
     if (isAllowedOrigin(origin)) return cb(null, true);
-    return cb(new Error("CORS blocked: " + origin));
+    return cb(new Error("Not allowed by CORS"));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-}));
+  optionsSuccessStatus: 204,
+};
 
-// ✅ Preflight (very important)
-app.options("*", cors());
-
-// ✅ Body parsers (MUST be before routes)
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 // ✅ PASTE HERE (move)
 const PORT = process.env.PORT || 5000;
@@ -754,7 +546,7 @@ app.use("/uploads", express.static(UPLOAD_DIR));
 
 // ✅ Admin credentials from .env (DO NOT hardcode in frontend)
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "corporate@stareng.co.in";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "@N$@R1_@y@n";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "@N$@R1_@y@n.";
 
 // In-memory stores (simple & fast)
 const captchaStore = new Map(); // captchaId -> { answer, exp }
@@ -1591,18 +1383,6 @@ function detectDocType(lines, compactLower) {
   if (head.includes("invoice")) return "SALE";
 
   return "SALE";
-}
-
-function drcrForType(type) {
-  const map = {
-    SALE: "DR",
-    PURCHASE: "CR",
-    PAYMENT: "DR",
-    RECEIPT: "CR",
-    SALES_RETURN: "CR",
-    PURCHASE_RETURN: "DR",
-  };
-  return map[type] || "DR";
 }
 function paymentCodeFromFilename(originalName) {
   const fname = String(originalName || "").trim();

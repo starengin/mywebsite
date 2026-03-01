@@ -20,7 +20,7 @@ async function request(path, { method = "GET", body } = {}) {
   // ✅ login route par token nahi hota, so error message will show properly
   if (res.status === 401 && token) {
     logout();
-    window.location.href = "/login";
+    window.location.href = "https://www.stareng.co.in";
     throw new Error(data?.message || "Session expired. Please login again.");
   }
 
