@@ -515,6 +515,8 @@ function isAllowedOrigin(origin) {
 
 const app = express();
 const prisma = new PrismaClient();
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
 // ✅ CORS (Production-safe + Dev-safe)
 const ALLOWED_ORIGINS = new Set([
   "http://localhost:5173",
@@ -963,15 +965,16 @@ function requireAdminOrSameCustomer(req, res, next) {
 }
 // ✅ Customer Login
 app.post("/customer-auth/login", async (req, res) => {
+    console.log("CUSTOMER LOGIN BODY:", req.body);
   try {
     const { email, password } = req.body || {};
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password required" });
     }
 
-    const user = await prisma.user.findFirst({
-      where: { email: String(email), role: "CUSTOMER" },
-    });
+const user = await prisma.user.findFirst({
+  where: { email: String(email).toLowerCase().trim(), role: "CUSTOMER" },
+});
 
     if (!user) return res.status(401).json({ message: "Invalid credentials" });
 

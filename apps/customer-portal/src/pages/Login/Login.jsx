@@ -62,7 +62,10 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const res = await api.login({ email, password });
+      const res = await api.login({
+  email: email.trim(),
+  password: password,
+});
       saveAuth({ token: res.token, user: res.user });
       navigate("/");
     } catch (e) {
