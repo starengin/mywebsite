@@ -106,7 +106,7 @@ export default function Contact() {
         page: window.location.href,
       };
 
-      const res = await fetch(`${API_BASE}/public/contact`, {
+      const res = await fetch(`${API}/public/contact`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
