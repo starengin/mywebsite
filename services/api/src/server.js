@@ -544,7 +544,7 @@ const corsOptions = {
     if (/^https:\/\/.*\.vercel\.app$/.test(origin)) return cb(null, true);
 
     // ❗ IMPORTANT: don't throw error (it breaks preflight)
-    return cb(null, false);
+    return cb(new Error("Not allowed by CORS"));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -655,6 +655,10 @@ app.get("/dashboard", async (req, res) => {
     return res.status(500).json({ message: e.message || "Dashboard failed" });
   }
 });
+smtp.verify((err, success) => {
+  if (err) console.error("❌ SMTP VERIFY FAILED:", err);
+  else console.log("✅ SMTP READY");
+});
 app.post("/public/contact", async (req, res) => {
   try {
     const { name, company, phone, email, city, material, details, subject, preferred, page } = req.body || {};
@@ -669,6 +673,9 @@ app.post("/public/contact", async (req, res) => {
     if (!details || String(details).trim().length < 10)
       return res.status(400).json({ message: "Requirement details are required" });
 
+    if (!process.env.ZOHO_EMAIL || !process.env.ZOHO_APP_PASSWORD) {
+  return res.status(500).json({ message: "Email service not configured (ZOHO env missing)" });
+}
     const toEmail = process.env.CONTACT_TO_EMAIL || "corporate@stareng.co.in";
     const fromEmail = process.env.ZOHO_EMAIL; // ✅ must exist
     const fromName = process.env.CONTACT_FROM_NAME || "STAR ENGINEERING";
