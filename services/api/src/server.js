@@ -543,7 +543,7 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
-// ✅ Preflight
+// ✅ Preflights
 app.options("*", cors());
 
 // ✅ PASTE HERE (move)
