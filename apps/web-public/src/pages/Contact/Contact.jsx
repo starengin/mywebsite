@@ -212,7 +212,7 @@ async function onSubmit(e) {
 
       <a
         className="btnGhost"
-        href={`https://wa.me/$917045276723?text=${encodeURIComponent(buildWhatsAppMessage(form))}`}
+        href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(buildWhatsAppMessage(form))}`}
         target="_blank"
         rel="noreferrer"
       >
