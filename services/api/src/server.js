@@ -15,6 +15,8 @@ const pdfParse = typeof pdfParseLib === "function" ? pdfParseLib : pdfParseLib.d
 
 
 dotenv.config();
+const dns = require("dns");
+dns.setDefaultResultOrder("ipv4first");
 
 const axios = require("axios");
 const crypto = require("crypto"); // ✅ ADD THIS
@@ -31,19 +33,25 @@ async function sendOtpEmail({ to_email, to_name, otp, expiry_minutes }) {
     throw new Error("EmailJS env missing");
   }
 
-  const payload = {
-    service_id: EMAILJS_SERVICE_ID,
-    template_id: EMAILJS_TEMPLATE_ID,
-    user_id: EMAILJS_PUBLIC_KEY,
-    template_params: {
-      to_email,
-      to_name: to_name || "Admin",
-      otp,
-      expiry_minutes: String(expiry_minutes || 3),
-      app_name: "STAR Engineering Admin Portal",
-      login_time: new Date().toLocaleString("en-IN"),
-    },
-  };
+const payload = {
+  name: form.name.trim(),
+  company: form.company.trim(),
+  phone: String(form.phone || "").replace(/\D/g, ""), // ✅ only digits
+  email: form.email.trim(),
+  city: form.city.trim(),
+  material: form.material,
+  details: form.details.trim(),
+  subject: (form.subject || DEFAULT_SUBJECT).trim(),
+  preferred: form.preferred,
+  page: window.location.href,
+};
+
+
+console.log("SENDING PAYLOAD:", payload);
+if (!res.ok) {
+  console.log("CONTACT FAIL:", res.status, data);
+  throw new Error(data?.message || `Failed (${res.status})`);
+}
 
   if (EMAILJS_PRIVATE_KEY) payload.accessToken = EMAILJS_PRIVATE_KEY;
 
@@ -57,21 +65,19 @@ async function sendOtpEmail({ to_email, to_name, otp, expiry_minutes }) {
 ========================= */
 const smtp = nodemailer.createTransport({
   host: process.env.ZOHO_SMTP_HOST || "smtp.zoho.in",
-  port: Number(process.env.ZOHO_SMTP_PORT || 587),
-  secure: String(process.env.ZOHO_SMTP_SECURE || "false") === "true", // ✅ false for 587
+  port: Number(process.env.ZOHO_SMTP_PORT || 465),
+  secure: true, // ✅ 465 => true
   auth: {
     user: process.env.ZOHO_EMAIL,
     pass: process.env.ZOHO_APP_PASSWORD,
   },
-  tls: {
-    // ✅ prevents some hosting TLS handshake stalls
-    rejectUnauthorized: false,
-  },
-  connectionTimeout: 15000,
-  greetingTimeout: 15000,
-  socketTimeout: 20000,
+  tls: { rejectUnauthorized: false },
+  connectionTimeout: 45000,
+  greetingTimeout: 45000,
+  socketTimeout: 60000,
 });
-smtp.verify((err, success) => {
+// ✅ keep ONLY ONE verify
+smtp.verify((err) => {
   if (err) console.error("❌ SMTP VERIFY FAILED:", err?.message || err);
   else console.log("✅ SMTP READY");
 });
@@ -536,8 +542,8 @@ const ALLOWED_ORIGINS = new Set([
   "https://www.stareng.co.in",
   "https://stareng.co.in",
 
-  "https://portal.stareng.co.in",   // ✅ ADD THIS (customer portal)
-  "https://admin.stareng.co.in",    // ✅ admin domain
+  "https://portal.stareng.co.in",
+  "https://admin.stareng.co.in",
 
   "https://stareng.vercel.app",
   "https://stareng-admin.vercel.app",
@@ -545,27 +551,21 @@ const ALLOWED_ORIGINS = new Set([
 
 const corsOptions = {
   origin: (origin, cb) => {
-    // ✅ allow Postman/curl/server-to-server (no origin)
-    if (!origin) return cb(null, true);
+    if (!origin) return cb(null, true); // curl/postman
 
-    // ✅ allow exact domains
     if (ALLOWED_ORIGINS.has(origin)) return cb(null, true);
 
-    // ✅ allow ANY vercel preview domain
     if (/^https:\/\/.*\.vercel\.app$/.test(origin)) return cb(null, true);
 
-    // ❗ IMPORTANT: don't throw error (it breaks preflight)
-    return cb(new Error("Not allowed by CORS"));
+    // ✅ IMPORTANT: do NOT throw error (avoids missing CORS headers)
+    return cb(null, false);
   },
-  credentials: true,
+  credentials: false, // ✅ keep false (you don't need cookies)
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
-// ✅ Put CORS BEFORE all routes
 app.use(cors(corsOptions));
-
-// ✅ Preflight for all routes (MUST use same options)
 app.options("*", cors(corsOptions));
 
 // ✅ PASTE HERE (move)
@@ -666,67 +666,95 @@ app.get("/dashboard", async (req, res) => {
     return res.status(500).json({ message: e.message || "Dashboard failed" });
   }
 });
-smtp.verify((err, success) => {
-  if (err) console.error("❌ SMTP VERIFY FAILED:", err);
-  else console.log("✅ SMTP READY");
-});
+
 app.post("/public/contact", async (req, res) => {
-  try {
-    const { name, company, phone, email, city, material, details, subject, preferred, page } = req.body || {};
+  const body = req.body || {};
 
-    if (!name || String(name).trim().length < 2) return res.status(400).json({ message: "Name is required" });
+  // ✅ accept both naming styles
+  const name = String(body.name || body.fullName || "").trim();
+  const company = String(body.company || "").trim();
+  const phone = String(body.phone || "").trim();
+  const email = String(body.email || "").trim();
+  const city = String(body.city || "").trim();
+  const material = String(body.material || body.materialType || "ALL").trim();
+  const preferred = String(body.preferred || body.preferredContact || "Call").trim();
+  const subject = String(body.subject || "STAR ENGINEERING – Requirement Enquiry").trim();
+  const details = String(body.details || body.requirementDetails || "").trim();
+  const page = String(body.page || "").trim();
 
-    const digits = String(phone || "").replace(/\D/g, "");
-    if (digits.length < 10) return res.status(400).json({ message: "Valid phone is required" });
+  // ✅ validations (400 only for missing required)
+  if (!name || name.length < 2) return res.status(400).json({ ok: false, message: "Name is required" });
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 10) return res.status(400).json({ ok: false, message: "Valid phone is required" });
+  if (!city || city.length < 2) return res.status(400).json({ ok: false, message: "City is required" });
+  if (!details || details.length < 3) return res.status(400).json({ ok: false, message: "Requirement details required" });
 
-    if (!city || String(city).trim().length < 2) return res.status(400).json({ message: "City is required" });
+  // ✅ IMPORTANT: respond immediately (never block UX)
+  res.status(200).json({
+    ok: true,
+    message: "Requirement received. Our team will contact you shortly.",
+  });
 
-    if (!details || String(details).trim().length < 10)
-      return res.status(400).json({ message: "Requirement details are required" });
+  // ✅ background best-effort (email failure should NEVER affect response)
+  setImmediate(async () => {
+    try {
+      if (!process.env.ZOHO_EMAIL || !process.env.ZOHO_APP_PASSWORD) {
+        console.error("CONTACT: ZOHO env missing");
+        return;
+      }
 
-    if (!process.env.ZOHO_EMAIL || !process.env.ZOHO_APP_PASSWORD) {
-  return res.status(500).json({ message: "Email service not configured (ZOHO env missing)" });
-}
-    const toEmail = process.env.CONTACT_TO_EMAIL || "corporate@stareng.co.in";
-    const fromEmail = process.env.ZOHO_EMAIL; // ✅ must exist
-    const fromName = process.env.CONTACT_FROM_NAME || "STAR ENGINEERING";
+      const toEmail = process.env.CONTACT_TO_EMAIL || "corporate@stareng.co.in";
+      const fromEmail = process.env.ZOHO_EMAIL;
 
-    const finalSubject =
-      subject && String(subject).trim()
-        ? String(subject).trim()
-        : "STAR Engineering – Requirement Enquiry";
+      // ✅ hard timeout wrapper so it doesn't hang forever
+      const withTimeout = (p, ms, label) =>
+        Promise.race([
+          p,
+          new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} timeout`)), ms)),
+        ]);
 
-    // ✅ 1) Mail to corporate (premium template)
-    await smtp.sendMail({
-      from: `"${fromName}" <${fromEmail}>`,
-      to: toEmail,
-      subject: finalSubject,
-      html: contactInquiryEmailHTML({
-        name, company, phone, email, city,
-        material, details, preferred,
-        subject: finalSubject,
-        page,
-      }),
-      replyTo: email ? String(email).trim() : undefined,
-    });
-
-    // ✅ 2) Acknowledgement to customer (if email provided) — premium template
-    if (email && String(email).trim()) {
-      await smtp.sendMail({
-        from: `"${fromName}" <${fromEmail}>`,
-        to: String(email).trim(),
-        subject: "We received your requirement – STAR Engineering",
-        html: contactCustomerAckEmailHTML({
-          name,
-          subject: finalSubject,
+      await withTimeout(
+        smtp.sendMail({
+          from: fromEmail,
+          to: toEmail,
+          subject,
+          html: contactInquiryEmailHTML({
+            name, company, phone, email, city, material, details, preferred, subject, page,
+          }),
+          replyTo: email || undefined,
         }),
-      });
-    }
+        12000,
+        "smtp.sendMail(admin)"
+      );
 
-    return res.json({ ok: true });
+      if (email) {
+        await withTimeout(
+          smtp.sendMail({
+            from: fromEmail,
+            to: email,
+            subject: "We received your requirement – STAR Engineering",
+            html: contactCustomerAckEmailHTML({ name, subject }),
+          }),
+          12000,
+          "smtp.sendMail(customer)"
+        );
+      }
+
+      console.log("✅ CONTACT EMAIL SENT");
+    } catch (e) {
+      console.error("❌ CONTACT EMAIL FAILED (ignored):", e?.message || e);
+    }
+  });
+});
+app.get("/admin/leads", async (req, res) => {
+  try {
+    const items = await prisma.contactLead.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
+    res.json(items);
   } catch (e) {
-    console.error("CONTACT ERROR:", e);
-    return res.status(500).json({ message: "Email service failed", details: String(e.message || e) });
+    res.status(500).json({ message: "Failed", details: String(e.message || e) });
   }
 });
 // ✅ Captcha endpoint (server generates & validates)
