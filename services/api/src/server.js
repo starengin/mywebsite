@@ -1512,9 +1512,10 @@ function paymentCodeFromFilename(originalName) {
   return String(m[1] || "").trim().toUpperCase();
 }
 function sanitizeVoucherNo(v) {
-    // ✅ reject common wrong tokens
+  let s = String(v || "").trim().toUpperCase(); // ✅ FIRST define
+
+  // ✅ reject common wrong tokens
   if (s === "EWAY" || s === "E-WAY" || s === "EWAYBILL") return "";
-  let s = String(v || "").trim().toUpperCase();
 
   // remove any 12-digit eway if it got glued into invoice no
   s = s.replace(/\b\d{12}\b/g, "");
