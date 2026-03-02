@@ -1463,23 +1463,15 @@ function pickTotalAmount(lines) {
   return 0;
 }
 function findInvoiceAndEway(lines) {
-  for (let i = 0; i < lines.length; i++) {
-    const l = norm(lines[i]).toLowerCase();
-    if (l.includes("invoice no") && l.includes("e-way")) {
-      for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
-        const v = norm(lines[j]);
-        if (!v) continue;
+  const full = lines.join(" ");
 
-        const parts = v.split(/\s+/).filter(Boolean);
+  // ✅ Invoice strictly STAR + digits (avoid taking eway)
+  const invoiceNo = full.match(/\b(STAR\d{3,})\b/i)?.[1] || "";
 
-        const invoice = parts.find((p) => /^STAR\d{3,}$/i.test(p)) || "";
-        const eway = parts.find((p) => /^\d{10,20}$/.test(p)) || "";
+  // ✅ E-way is ALWAYS 12 digits (as you said)
+  const eWayBillNo = full.match(/\b(\d{12})\b/)?.[1] || "";
 
-        return { invoiceNo: invoice, eWayBillNo: eway };
-      }
-    }
-  }
-  return { invoiceNo: "", eWayBillNo: "" };
+  return { invoiceNo: invoiceNo ? invoiceNo.toUpperCase() : "", eWayBillNo };
 }
 function detectDocType(lines, compactLower) {
   // HEADINGS-based detect (most reliable)
@@ -1531,12 +1523,16 @@ function pickVoucherNo(type, lines, compact, originalName) {
     return m?.[1] ? String(m[1]).trim() : "";
   }
 if (type === "SALE") {
-  // ✅ avoid capturing "e-Way" from label line
+  // ✅ 1) Prefer strict invoice
   const { invoiceNo } = findInvoiceAndEway(lines);
   if (invoiceNo) return invoiceNo;
 
-  // fallback: STAR0007 anywhere
-  const star = compact.match(/\b(STAR\d{3,})\b/i)?.[1] || "";
+  // ✅ 2) fallback: STAR0007 anywhere
+  let star = compact.match(/\b(STAR\d{3,})\b/i)?.[1] || "";
+
+  // ✅ 3) safety: if any 12-digit eway got stuck, remove it
+  star = String(star).replace(/\b\d{12}\b/g, "");
+
   return norm(star);
 }
 
