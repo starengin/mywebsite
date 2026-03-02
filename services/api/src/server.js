@@ -1530,7 +1530,7 @@ function sanitizeVoucherNo(v) {
   if (s.length > 12) s = s.slice(0, 12);
 
   return s.trim();
-}
+} 
 function pickVoucherNo(type, lines, compact, originalName) {
   const t = compact;
 
