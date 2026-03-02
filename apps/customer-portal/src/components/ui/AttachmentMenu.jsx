@@ -46,23 +46,19 @@ export default function AttachmentMenu({
 
   return (
     <div className="attachWrap" ref={ref}>
-      <button
-        type="button"
-        className={"attachBtn attachBtn--grad " + (isOpen ? "isOpen" : "")}
-        title={`Attachments (${pdfs.length})`}
-        onClick={() => setOpenId(isOpen ? "" : rowId)}
-      >
-        <span className="attachBtn__icon">
-          <DownloadViewIcon />
-        </span>
-        <span className="attachBtn__count">{pdfs.length}</span>
-      </button>
+<button
+  type="button"
+  className={"attachBtn attachBtn--grad " + (isOpen ? "isOpen" : "")}
+  title="View attachment"
+  onClick={() => setOpenId(isOpen ? "" : rowId)}
+>
+  <span className="attachBtn__icon">
+    <DownloadViewIcon />
+  </span>
+</button>
 
       {isOpen && (
         <div className="attachMenu">
-          <div className="attachMenuHead">
-            Attachments <span className="attachMenuPill">{pdfs.length}</span>
-          </div>
 
           {pdfs.map((p, idx) => (
             <a

@@ -161,10 +161,11 @@ export default function Transactions() {
       return "Opening Balance";
     }
 
-    if (r.__type === "CLOSING") {
-      // You asked "By Closing Balance" (always)
-      return "By Closing Balance";
-    }
+if (r.__type === "CLOSING") {
+  if (closing > 0) return "By Closing Balance";
+  if (closing < 0) return "To Closing Balance";
+  return "Closing Balance";
+}
 
     const typeRaw = String(r?.voucherType || r?.type || "").toUpperCase();
     const label = TYPE_LABEL[typeRaw] || (typeRaw ? typeRaw.replaceAll("_", " ") : "Entry");
@@ -241,10 +242,9 @@ export default function Transactions() {
         animate={{ opacity: 1, y: 0 }}
         className="card overflow-hidden"
       >
-        {/* ✅ Mobile: no overflow scroll. Desktop: allow scroll if needed */}
-        <div className="md:overflow-auto">
-          {/* ✅ Desktop needs width; Mobile fits naturally */}
-          <table className="w-full md:min-w-[880px]">
+{/* ✅ Full width always */}
+<div className="w-full overflow-x-auto">
+  <table className="w-full min-w-[900px]">
             <thead className="bg-slate-50 border-b">
               <tr className="text-left text-[11px] md:text-xs text-slate-500">
                 <th className="px-3 md:px-4 py-3 whitespace-nowrap">Date</th>
@@ -263,7 +263,7 @@ export default function Transactions() {
                 <th className="md:hidden px-3 py-3">Particulars</th>
                 <th className="md:hidden px-3 py-3 text-right whitespace-nowrap">Amount</th>
 
-                <th className="px-3 md:px-4 py-3 text-right whitespace-nowrap">👁️</th>
+                <th className="px-2 md:px-4 py-3 text-right whitespace-nowrap w-[56px]">👁️</th>
               </tr>
             </thead>
 
@@ -333,7 +333,7 @@ export default function Transactions() {
                       </td>
 
                       {/* Attachment */}
-                      <td className="px-3 md:px-4 py-3 text-right">
+                      <td className="px-2 md:px-4 py-3 text-right w-[56px]">
                         {r.__type === "OPENING" || r.__type === "CLOSING" ? (
                           <span className="text-xs text-slate-400">—</span>
                         ) : (
