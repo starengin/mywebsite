@@ -475,7 +475,7 @@ if (r.__type === "CLOSING") {
       </motion.div>
 
       <div className="text-xs text-slate-500 text-center">
-        Thank you for choosing STAR. Need help? Contact support from your company.
+        Thank you for choosing STAR ENGINEERING. Need help? Contact support from your company.
       </div>
     </div>
   );
