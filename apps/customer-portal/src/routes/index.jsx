@@ -6,7 +6,6 @@ import ProtectedRoute from "../components/ProtectedRoute";
 import Login from "../pages/Login/Login.jsx";
 import AppShell from "../components/layout/AppShell.jsx";
 import Home from "../pages/Home/Home.jsx";
-import Ledger from "../pages/Ledger/Ledger.jsx";
 import Transactions from "../pages/Transactions/Transactions.jsx";
 
 import { isAuthed } from "../lib/auth.js";
@@ -32,7 +31,6 @@ export default function AppRoutes() {
         }
       >
         <Route index element={<Home />} />
-        <Route path="ledger" element={<Ledger />} />
         <Route path="transactions" element={<Transactions />} />
       </Route>
 
