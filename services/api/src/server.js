@@ -74,10 +74,10 @@ const smtp = nodemailer.createTransport({
   socketTimeout: 60000,
 });
 // ✅ keep ONLY ONE verify
-smtp.verify((err) => {
-  if (err) console.error("❌ SMTP VERIFY FAILED:", err?.message || err);
-  else console.log("✅ SMTP READY");
-});
+// smtp.verify((err) => {
+//   if (err) console.error("❌ SMTP VERIFY FAILED:", err?.message || err);
+//   else console.log("✅ SMTP READY");
+// });
 
 function welcomeEmailHTML({ name, email, password }) {
   const company = process.env.COMPANY_NAME || "STAR ENGINEERING";
@@ -724,7 +724,7 @@ setImmediate(async () => {
   } catch (e) {
     console.error("❌ CONTACT EMAIL FAILED (ignored):", e?.message || e);
   }
-});
+  });
 });
 app.get("/admin/leads", async (req, res) => {
   try {
@@ -1069,39 +1069,31 @@ app.post("/customers", async (req, res) => {
 
     // ✅ WELCOME EMAIL in background (best effort)
     setImmediate(async () => {
-      try {
-        // ---- OPTION A (BEST): RESEND ----
-        if (process.env.RESEND_API_KEY) {
-          await resend.emails.send({
-            from: "STAR Engineering <noreply@stareng.co.in>",
-            to: created.email,
-            subject: "Welcome to STAR Engineering – Your Portal Login",
-            html: welcomeEmailHTML({
-              name: created.name,
-              email: created.email,
-              password: String(password),
-            }),
-          });
-          console.log("✅ WELCOME EMAIL SENT (Resend)");
-          return;
-        }
+  try {
+    if (!process.env.RESEND_API_KEY) {
+      console.error("WELCOME: RESEND_API_KEY missing");
+      return;
+    }
 
-        // ---- OPTION B: ZOHO SMTP fallback ----
-        await smtp.sendMail({
-          from: process.env.ZOHO_EMAIL,
-          to: created.email,
-          subject: "Welcome to STAR Engineering – Your Portal Login",
-          html: welcomeEmailHTML({
-            name: created.name,
-            email: created.email,
-            password: String(password),
-          }),
-        });
-        console.log("✅ WELCOME EMAIL SENT (Zoho)");
-      } catch (mailErr) {
-        console.error("❌ WELCOME EMAIL FAILED (ignored):", mailErr?.message || mailErr);
-      }
+    const fromEmail = process.env.RESEND_FROM || "onboarding@resend.dev"; 
+    // ✅ later: noreply@stareng.co.in (when domain verified)
+
+    await resend.emails.send({
+      from: `STAR Engineering <${fromEmail}>`,
+      to: created.email,
+      subject: "Welcome to STAR Engineering – Your Portal Login",
+      html: welcomeEmailHTML({
+        name: created.name,
+        email: created.email,
+        password: String(password),
+      }),
     });
+
+    console.log("✅ WELCOME EMAIL SENT (Resend) =>", created.email);
+  } catch (mailErr) {
+    console.error("❌ WELCOME EMAIL FAILED (Resend):", mailErr?.message || mailErr);
+  }
+});
   } catch (e) {
     console.error("CREATE CUSTOMER ERROR:", e);
     return res.status(500).json({
