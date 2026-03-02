@@ -3,13 +3,13 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "../components/ProtectedRoute";
 
 // pages
-import Login from "../pages/Login";
+import Login from "../pages/Login/Login.jsx";
 import CustomerLayout from "../layouts/CustomerLayout";
-import Home from "../pages/Home";
-import Ledger from "../pages/Ledger";
-import Transactions from "../pages/Transactions";
+import Home from "../pages/Home/Home.jsx";
+import Ledger from "../pages/Ledger/Ledger.jsx";
+import Transactions from "../pages/Transactions/Transactions.jsx";
 
-import { isAuthed } from "../lib/auth";
+import { isAuthed } from "../lib/auth.js";
 
 export default function AppRoutes() {
   return (
