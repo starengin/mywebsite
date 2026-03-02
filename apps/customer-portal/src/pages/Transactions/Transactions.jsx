@@ -215,32 +215,36 @@ if (r.__type === "CLOSING") {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-            <span className="text-slate-500">From</span>
-            <div className="flex gap-2 items-center">
-              <input
-                type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                className="border rounded-xl px-3 h-10"
-              />
-              <span className="text-slate-500">To</span>
-              <input
-                type="date"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                className="border rounded-xl px-3 h-10"
-              />
-            </div>
-            <div className="flex gap-2">
-              <button className="btn-ghost" onClick={load}>
-                {loading ? "Refreshing..." : "Refresh"}
-              </button>
-              <button className="btn-gradient" onClick={onExport}>
-                Export PDF
-              </button>
-            </div>
-          </div>
+<div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+  <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_auto_1fr] gap-2 items-center w-full">
+    <span className="text-slate-500 text-sm">From</span>
+
+    <input
+      type="date"
+      value={from}
+      onChange={(e) => setFrom(e.target.value)}
+      className="border rounded-xl px-3 h-10 w-full"
+    />
+
+    <span className="text-slate-500 text-sm">To</span>
+
+    <input
+      type="date"
+      value={to}
+      onChange={(e) => setTo(e.target.value)}
+      className="border rounded-xl px-3 h-10 w-full"
+    />
+  </div>
+
+  <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2 w-full sm:w-auto">
+    <button className="btn-ghost w-full sm:w-auto" onClick={load}>
+      {loading ? "Refreshing..." : "Refresh"}
+    </button>
+    <button className="btn-gradient w-full sm:w-auto" onClick={onExport}>
+      Export PDF
+    </button>
+  </div>
+</div>
         </div>
       </motion.div>
 
@@ -256,8 +260,8 @@ if (r.__type === "CLOSING") {
   <table className="w-full table-fixed md:table-auto">
             <thead className="bg-slate-50 border-b">
               <tr className="text-left text-[11px] md:text-xs text-slate-500">
-                <th className="px-2 md:px-4 py-3 whitespace-nowrap">Date</th>
-                <th className="px-2 md:px-4 py-3 whitespace-nowrap">Voucher</th>
+<th className="px-2 md:px-4 py-2 md:py-3 whitespace-nowrap w-[92px] md:w-auto">Date</th>
+<th className="px-2 md:px-4 py-2 md:py-3 whitespace-nowrap w-[96px] md:w-auto">Voucher</th>
 
                 {/* ✅ Desktop columns */}
                 <th className="hidden md:table-cell px-3 md:px-4 py-3">Particulars</th>
@@ -269,10 +273,10 @@ if (r.__type === "CLOSING") {
                 </th>
 
                 {/* ✅ Mobile columns */}
-                <th className="md:hidden px-3 py-3">Particulars</th>
-                <th className="md:hidden px-3 py-3 text-right whitespace-nowrap">Amount</th>
+<th className="md:hidden px-2 py-2 w-[140px]">Particulars</th>
+<th className="md:hidden px-2 py-2 text-right whitespace-nowrap w-[110px]">Amount</th>
 
-                <th className="px-2 md:px-4 py-2 md:py-3 text-right whitespace-nowrap w-[52px]">👁️</th>
+                <th className="px-2 md:px-4 py-2 md:py-3 text-right whitespace-nowrap w-[44px] md:w-[52px]">👁️</th>
               </tr>
             </thead>
 
@@ -305,7 +309,7 @@ if (r.__type === "CLOSING") {
           {fmtDateISO(r.date)}
         </td>
 
-        <td className="px-2 md:px-4 py-3 font-medium whitespace-nowrap">
+        <td className="px-2 md:px-4 py-2 md:py-3 font-medium text-[11px] leading-4 whitespace-normal break-words">
           {r.voucherNo || "—"}
         </td>
 
@@ -326,15 +330,18 @@ if (r.__type === "CLOSING") {
         </td>
 
         {/* ✅ Mobile */}
-        <td className="md:hidden px-3 py-3 min-w-0">
-          <div className="font-semibold truncate" title={particulars}>
-            {particulars}
-          </div>
-        </td>
+<td className="md:hidden px-2 py-2 align-top">
+  <div
+    className="font-semibold text-[11px] leading-4 whitespace-normal break-words"
+    title={particulars}
+  >
+    {particulars}
+  </div>
+</td>
 
         <td
           className={
-            "md:hidden px-3 py-3 text-right font-extrabold whitespace-nowrap " +
+            "md:hidden px-2 py-2 text-right text-[11px] leading-4 font-extrabold whitespace-nowrap " +
             (amt.kind === "plus"
               ? "text-emerald-600"
               : amt.kind === "minus"
@@ -375,10 +382,10 @@ if (r.__type === "CLOSING") {
                 href={fileHref(p, getToken())}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50"
+                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-2 hover:bg-slate-50"
                 title={p.name || `PDF ${idx + 1}`}
               >
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border bg-slate-50">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl border bg-slate-50">
                   📄
                 </span>
 

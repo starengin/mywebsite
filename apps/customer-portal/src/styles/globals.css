@@ -543,3 +543,14 @@ body {
   .attachBtn__count{ height:20px; min-width:20px; padding:0 7px; }
   .attachMenu{ min-width:240px; }
 }
+@media (max-width: 640px){
+  .attachBtn{
+    height: 32px;
+    width: 38px;
+    padding: 0;
+    border-radius: 999px;
+  }
+  .attachBtn__icon{
+    font-size: 14px;
+  }
+}
