@@ -1463,38 +1463,17 @@ function pickTotalAmount(lines) {
   return 0;
 }
 function findInvoiceAndEway(lines) {
-  // Try to read from lines near "Invoice No"
-  for (let i = 0; i < lines.length; i++) {
-    const l = String(lines[i] || "").toLowerCase();
-
-    // line contains both headers: "Invoice No. e-Way Bill No."
-    if (l.includes("invoice") && l.includes("no") && l.includes("e-way")) {
-      // next non-empty line should contain: "STAR0007 232065329856"
-      for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
-        const v = norm(lines[j]);
-        if (!v) continue;
-
-        const parts = v.split(/\s+/).filter(Boolean);
-
-        // invoice token (must contain letters, not 12-digit number)
-        const invoiceToken = (parts.find(x => /[A-Za-z]/.test(x)) || "").toUpperCase();
-
-        // eway token (12 digits)
-        const ewayToken = (parts.find(x => /^\d{12}$/.test(x)) || "");
-
-        return { invoiceNo: invoiceToken, eWayBillNo: ewayToken };
-      }
-    }
-  }
-
-  // Fallback 1: inline "Invoice No. STAR0007"
   const full = lines.join(" ");
-  const invoiceNo =
-    full.match(/\bInvoice\s*No\.?\s*[:\-]?\s*([A-Za-z][A-Za-z0-9\/-]{2,20})\b/i)?.[1] || "";
 
-  const eWayBillNo = full.match(/\b(\d{12})\b/)?.[1] || "";
+  // ✅ STRICT invoice: must start with STAR (prevents picking "e-Way")
+  const invoiceMatch = full.match(/\b(STAR[A-Z0-9\/-]{3,12})\b/i);
+  const invoiceNo = invoiceMatch ? invoiceMatch[1].toUpperCase() : "";
 
-  return { invoiceNo: invoiceNo ? invoiceNo.toUpperCase() : "", eWayBillNo };
+  // ✅ e-way strictly 12 digits
+  const eWayMatch = full.match(/\b(\d{12})\b/);
+  const eWayBillNo = eWayMatch ? eWayMatch[1] : "";
+
+  return { invoiceNo, eWayBillNo };
 }
 function detectDocType(lines, compactLower) {
   // HEADINGS-based detect (most reliable)
@@ -1533,6 +1512,8 @@ function paymentCodeFromFilename(originalName) {
   return String(m[1] || "").trim().toUpperCase();
 }
 function sanitizeVoucherNo(v) {
+    // ✅ reject common wrong tokens
+  if (s === "EWAY" || s === "E-WAY" || s === "EWAYBILL") return "";
   let s = String(v || "").trim().toUpperCase();
 
   // remove any 12-digit eway if it got glued into invoice no
@@ -1563,12 +1544,13 @@ function pickVoucherNo(type, lines, compact, originalName) {
     return m?.[1] ? String(m[1]).trim() : "";
   }
 if (type === "SALE") {
-  // ✅ 1) strongest: label based (Invoice No + E-way split)
   const { invoiceNo } = findInvoiceAndEway(lines);
+
+  // ✅ Only accept STAR-based invoice
   const s1 = sanitizeVoucherNo(invoiceNo);
   if (s1) return s1;
 
-  // ✅ 2) fallback: STAR... but HARD cap to 12 chars
+  // ✅ fallback: STAR... from anywhere
   const m = compact.match(/\b(STAR[A-Z0-9\/-]{3,20})\b/i)?.[1] || "";
   const s2 = sanitizeVoucherNo(m);
   if (s2) return s2;
