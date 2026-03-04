@@ -1,7 +1,11 @@
 import axios from "axios";
 
+const base =
+  import.meta.env.VITE_API_URL?.trim() ||
+  (import.meta.env.DEV ? "http://localhost:5000" : "https://api.stareng.co.in");
+
 const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "https://api.stareng.co.in",
+  baseURL: base,
   timeout: 15000,
 });
 
@@ -88,6 +92,41 @@ export const api = {
     )}/pdf?from=${encodeURIComponent(from)}&to=${encodeURIComponent(
       to
     )}&token=${encodeURIComponent(token)}`;
+  },
+    // ✅ Admin Email Center (send via backend)
+  sendAdminEmail: ({ to, subject, html, mainPdf, extraFiles = [] }) => {
+    const fd = new FormData();
+    fd.append("to", to);
+    fd.append("subject", subject);
+    fd.append("html", html || "");
+
+    if (mainPdf) fd.append("mainPdf", mainPdf);
+    for (const f of extraFiles) fd.append("extraFiles", f);
+
+    return getData(
+      API.post("/admin/emails/send", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+    );
+  },
+    // ✅ Email Center
+  adminLeads: () => getData(API.get("/admin/leads")),
+
+  adminSendEmail: (payload) => {
+    // payload: { to, subject, html, mainPdf?: File, extraFiles?: File[] }
+    const fd = new FormData();
+    fd.append("to", payload.to);
+    fd.append("subject", payload.subject);
+    fd.append("html", payload.html);
+
+    if (payload.mainPdf) fd.append("mainPdf", payload.mainPdf);
+    (payload.extraFiles || []).forEach((f) => fd.append("extraFiles", f));
+
+    return getData(
+      API.post("/admin/emails/send", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+    );
   },
 };
 

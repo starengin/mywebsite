@@ -110,11 +110,13 @@ function Nav({ setOpen }) {
       <SideLink to="/customers" label="Customers" onClick={() => setOpen(false)} />
       <SideLink to="/transactions" label="Transactions" onClick={() => setOpen(false)} />
       <SideLink to="/ledger" label="Ledger" onClick={() => setOpen(false)} />
+      <SideLink to="/emails" label="Email Center" onClick={() => setOpen(false)} />
     </nav>
   );
 }
 
 function SideLink({ to, label, end, onClick }) {
+  const isNew = label === "Email Center";
   return (
     <NavLink
       to={to}
@@ -122,7 +124,25 @@ function SideLink({ to, label, end, onClick }) {
       onClick={onClick}
       className={({ isActive }) => "sideLink" + (isActive ? " active" : "")}
     >
-      {label}
+      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {label}
+        {isNew && (
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 900,
+              padding: "2px 8px",
+              borderRadius: 999,
+              color: "#fff",
+              border: "1px solid rgba(255,232,190,0.35)",
+              background: "linear-gradient(135deg,#3b0000,#a100ff,#ff0066,#ff7a00)",
+              boxShadow: "0 10px 20px rgba(0,0,0,0.16)",
+            }}
+          >
+            NEW
+          </span>
+        )}
+      </span>
     </NavLink>
   );
 }

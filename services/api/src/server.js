@@ -7,6 +7,40 @@ const multer = require("multer");
 const { PrismaClient } = require("@prisma/client");
 const fs = require("fs");
 const path = require("path");
+// EMAIL TEMPLATES (safe load)
+// ✅ EMAIL TEMPLATES (safe load) — server.js is in /src, templates are in /emailTemplates (one level up)
+const TEMPLATES_DIR = path.join(__dirname, "..", "emailTemplates");
+
+function safeRead(fileName) {
+  try {
+    const fullPath = path.join(TEMPLATES_DIR, fileName);
+    const html = fs.readFileSync(fullPath, "utf8");
+    return html;
+  } catch (e) {
+    console.warn("⚠️ Template missing:", fileName, "| base:", TEMPLATES_DIR);
+    return "";
+  }
+}
+
+const SALES_TEMPLATE = safeRead("salesInvoice.html");
+const PURCHASE_TEMPLATE = safeRead("purchaseInvoice.html");
+const PAYMENT_TEMPLATE = safeRead("paymentAdvice.html");
+const RECEIPT_TEMPLATE = safeRead("receiptVoucher.html"); // ✅ ADD
+const JOURNAL_TEMPLATE = safeRead("journalAdvice.html");
+const DEBIT_NOTE_TEMPLATE  = safeRead("debitNote.html");
+const CREDIT_NOTE_TEMPLATE = safeRead("creditNote.html");
+
+// ✅ quick debug (server start pe dikh jayega)
+
+console.log("✅ TEMPLATE LENGTHS:", {
+  SALES: SALES_TEMPLATE.length,
+  PURCHASE: PURCHASE_TEMPLATE.length,
+  PAYMENT: PAYMENT_TEMPLATE.length,
+  JOURNAL: JOURNAL_TEMPLATE.length,
+    RECEIPT: RECEIPT_TEMPLATE.length, // ✅ ADD
+      DEBIT_NOTE: DEBIT_NOTE_TEMPLATE.length,
+  CREDIT_NOTE: CREDIT_NOTE_TEMPLATE.length,
+});
 const PDFDocument = require("pdfkit");
 const nodemailer = require("nodemailer"); // ✅ ADD (Zoho welcome email)
 // ✅ keep ONLY ONE pdfParse (remove other duplicate pdfParse lines)
@@ -16,6 +50,9 @@ const pdfParse = typeof pdfParseLib === "function" ? pdfParseLib : pdfParseLib.d
 
 
 dotenv.config();
+const RESEND_FROM = process.env.RESEND_FROM || "noreply@mail.stareng.co.in";
+// better format (recommended):
+const RESEND_FROM_FMT = `donotreply <${RESEND_FROM}>`;
 const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -176,7 +213,7 @@ function welcomeEmailHTML({ name, email, password }) {
 
           <p style="font-size:15px; line-height:1.8; margin:0 0 18px 0; color:#1f2937;">
             Greetings from <b>${company}</b>.<br>
-            Your customer portal account has been successfully created. Please use the credentials below to login.
+            Your User portal account has been successfully created. Please use the credentials below to login.
           </p>
 
           <!-- SUMMARY TABLE -->
@@ -526,7 +563,119 @@ function isAllowedOrigin(origin) {
     return false;
   }
 }
+function renderHTMLTemplate(html, vars = {}) {
+  return html.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_, k) => {
+    const v = vars[k];
+    return v === undefined || v === null ? "" : String(v);
+  });
+}
+function formatDate(dateStr) {
+  if (!dateStr) return "";
 
+  const d = new Date(dateStr);
+
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+function buildTxnEmailHTML(type, meta, party) {
+  let template = "";
+
+  if (type === "SALE") template = SALES_TEMPLATE;
+  else if (type === "PURCHASE") template = PURCHASE_TEMPLATE;
+  else if (type === "PAYMENT") template = PAYMENT_TEMPLATE;
+  else if (type === "RECEIPT") template = RECEIPT_TEMPLATE;
+  else if (type === "JOURNAL") template = JOURNAL_TEMPLATE;
+  else if (type === "PURCHASE_RETURN") template = DEBIT_NOTE_TEMPLATE;   // Debit Note
+else if (type === "SALES_RETURN") template = CREDIT_NOTE_TEMPLATE;     // Credit Note
+
+  // fallback (agar template empty ho)
+  if (!template || !template.trim()) {
+    return `
+      <div style="font-family:Arial">
+        <h2>STAR Engineering</h2>
+        <p>Party: <b>${party?.name || ""}</b></p>
+        <p>Voucher: <b>${meta?.voucherNo || ""}</b></p>
+        <p>Date: <b>${meta?.date || ""}</b></p>
+        <p>Amount: <b>${meta?.amount || ""}</b></p>
+      </div>
+    `;
+  }
+
+  return renderHTMLTemplate(template, {
+    // ✅ journal placeholders
+  drcr:
+    meta?.drcr || meta?.DrCr || meta?.DRCR || meta?.dr_cr || meta?.drCr || "",
+  narration:
+    meta?.narration || meta?.Narration || meta?.narr || "",
+
+  // ✅ add this
+  summary_line: meta?.summary_line || "",
+    drcr: meta?.drcr || meta?.DrCr || meta?.DRCR || "",
+    narration: meta?.narration || "",
+
+    party_name: party?.name || "",
+    party_email: party?.email || "",
+    party_gstin: party?.gstin || meta?.party_gstin || "",
+
+    voucherNo: meta?.voucherNo || meta?.VoucherNo || "",
+    VoucherNo: meta?.voucherNo || meta?.VoucherNo || "",
+
+    invoice_no: meta?.invoice_no || meta?.voucherNo || "",
+    invoice_date: formatDate(meta?.invoice_date || meta?.date),
+    invoice_amt: meta?.invoice_amt || meta?.amount || "",
+
+    advice_date: formatDate(meta?.advice_date || meta?.date),
+    total_amount: meta?.total_amount || meta?.amount || "",
+
+    payment_mode: meta?.payment_mode || "",
+    inst_no: meta?.inst_no || "",
+    inst_date: formatDate(meta?.inst_date || meta?.date),
+    to_ac: meta?.to_ac || "",
+    ifsc: meta?.ifsc || "",
+    issued_from_bank: meta?.issued_from_bank || "",
+    issued_from_ac: meta?.issued_from_ac || "",
+
+    purchase_ref: meta?.purchase_ref || meta?.voucherNo || "",
+    purchase_date: formatDate(meta?.purchase_date || meta?.date),
+    supplier_ref: meta?.supplier_ref || "",
+    supplier_ref_date: meta?.supplier_ref_date || "",
+
+    // RECEIPT
+    receipt_no: meta?.receipt_no || meta?.voucherNo || "",
+    receipt_date: formatDate(meta?.receipt_date || meta?.date),
+    received_from: party?.name || meta?.party_name || "",
+    through_bank: meta?.through_bank || meta?.issued_from_bank || "",
+    remitter_ac: meta?.issued_from_ac || "",
+    against_refs: meta?.against_refs || "",
+
+    // ✅ DEBIT / CREDIT NOTE
+note_date: formatDate(meta?.note_date || meta?.date),
+note_no: meta?.note_no || meta?.voucherNo || meta?.VoucherNo || "",
+amount: meta?.amount || meta?.total_amount || meta?.invoice_amt || "",
+  });
+}
+
+function subjectForType(type, meta) {
+  const v = meta?.voucherNo || meta?.invoice_no || "";
+  if (type === "SALE") return `Sales Invoice ${v} - STAR Engineering`;
+  if (type === "PURCHASE") return `Purchase Invoice ${v} - STAR Engineering`;
+  if (type === "PAYMENT") return `Payment Advice ${v} - STAR Engineering`;
+  if (type === "RECEIPT") return `Receipt ${v} - STAR Engineering`;
+  if (type === "JOURNAL") return `Journal Entry - ${meta?.narration || v} - STAR Engineering`;
+  if (type === "PURCHASE_RETURN") return `Debit Note ${v} - STAR Engineering`;
+if (type === "SALES_RETURN") return `Credit Note ${v} - STAR Engineering`;
+  return `Transaction ${v} - STAR Engineering`;
+}
+
+function fileToResendAttachmentFromDisk(file) {
+  return {
+    filename: file.originalname || "attachment.pdf",
+    content: fs.readFileSync(file.path).toString("base64"),
+  };
+}
 const app = express();
 const prisma = new PrismaClient();
 app.use(express.json({ limit: "10mb" }));
@@ -701,24 +850,21 @@ setImmediate(async () => {
     }
 
     // ✅ corporate (your team)
-    await resend.emails.send({
-      from: "STAR Engineering <noreply@stareng.co.in>",
-      to: process.env.CONTACT_TO_EMAIL || "corporate@stareng.co.in",
-      subject,
-      html: contactInquiryEmailHTML({
-        name, company, phone, email, city, material, details, preferred, subject, page,
-      }),
-    });
+await resend.emails.send({
+  from: RESEND_FROM_FMT,
+  to: process.env.CONTACT_TO_EMAIL || "corporate@stareng.co.in",
+  subject,
+  html: contactInquiryEmailHTML({ name, company, phone, email, city, material, details, preferred, subject, page }),
+});
 
-    // ✅ optional customer acknowledgement (send only if customer email exists)
-    if (email) {
-      await resend.emails.send({
-        from: "STAR Engineering <noreply@stareng.co.in>",
-        to: email,
-        subject: `We received your requirement – STAR Engineering`,
-        html: contactCustomerAckEmailHTML({ name, subject }),
-      });
-    }
+if (email) {
+  await resend.emails.send({
+    from: RESEND_FROM_FMT,
+    to: email,
+    subject: `We received your requirement – STAR Engineering`,
+    html: contactCustomerAckEmailHTML({ name, subject }),
+  });
+}
 
     console.log("✅ CONTACT EMAIL SENT (Resend)");
   } catch (e) {
@@ -726,6 +872,63 @@ setImmediate(async () => {
   }
   });
 });
+
+const uploadEmail = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: 60,               // ✅ total files allowed (main + extra)
+    fileSize: 25 * 1024 * 1024, // ✅ 25MB per file (adjust)
+  },
+});
+
+function toResendAttachment(file) {
+  return {
+    filename: file.originalname || "attachment",
+    content: Buffer.from(file.buffer).toString("base64"),
+  };
+}
+
+app.post(
+  "/admin/emails/send",
+  requireAdmin,
+  uploadEmail.fields([
+    { name: "mainPdf", maxCount: 1 },
+    { name: "extraFiles", maxCount: 50 },
+  ]),
+  async (req, res) => {
+    try {
+      const { to, subject, html } = req.body || {};
+      console.log("EMAIL BODY:", req.body);
+console.log("EMAIL FILES:", req.files);
+      if (!to || !subject || !html) {
+        return res.status(400).json({ message: "to, subject, html required" });
+      }
+
+      const attachments = [];
+
+      const mainPdf = req.files?.mainPdf?.[0];
+      if (mainPdf) attachments.push(toResendAttachment(mainPdf));
+
+      const extra = req.files?.extraFiles || [];
+      for (const f of extra) attachments.push(toResendAttachment(f));
+
+await resend.emails.send({
+  from: RESEND_FROM_FMT,
+  to: [to], // ✅ IMPORTANT FIX
+  subject,
+  html,
+  reply_to: "corporate@stareng.co.in", // ✅ Resend correct field
+  attachments: attachments.length ? attachments : undefined,
+});
+
+      return res.json({ ok: true, attached: attachments.length });
+    } catch (e) {
+      console.error("ADMIN EMAIL SEND ERROR:", e?.message || e);
+      return res.status(500).json({ message: "Email failed", details: String(e.message || e) });
+    }
+  }
+);
+
 app.get("/admin/leads", async (req, res) => {
   try {
     const items = await prisma.contactLead.findMany({
@@ -947,7 +1150,23 @@ function requireCustomer(req, res, next) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 }
+function requireAdmin(req, res, next) {
+  try {
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+    if (!token) return res.status(401).json({ message: "Unauthorized" });
 
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (!payload || payload.role !== "ADMIN") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    req.admin = payload;
+    next();
+  } catch {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+}
 function requireAdminOrSameCustomer(req, res, next) {
   try {
     const auth = req.headers.authorization || "";
@@ -1017,12 +1236,12 @@ app.get("/customer-auth/me", requireCustomer, async (req, res) => {
 ========================= */
 
 // ✅ List customers (for admin screen + dropdown)
-app.get("/customers", async (req, res) => {
+app.get("/customers", requireAdmin, async (req, res) => {
   try {
     const customers = await prisma.user.findMany({
       where: { role: "CUSTOMER" },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, email: true },
+      select: { id: true, name: true, email: true, phone: true, gstin: true, address: true, state: true },
     });
     res.json(customers);
   } catch (e) {
@@ -1033,7 +1252,7 @@ app.get("/customers", async (req, res) => {
 
 // ✅ Create customer + send welcome email (email + password + login button)
 // ✅ Create customer + send welcome email (NON-BLOCKING)
-app.post("/customers", async (req, res) => {
+app.post("/customers", requireAdmin, async (req, res) => {
   try {
     const { name, email, password } = req.body || {};
 
@@ -1061,7 +1280,15 @@ app.post("/customers", async (req, res) => {
         email: cleanEmail,
         passwordHash: hash,
       },
-      select: { id: true, name: true, email: true },
+      select: {
+  id: true,
+  name: true,
+  email: true,
+  phone: true,
+  gstin: true,
+  address: true,
+  state: true,
+},
     });
 
     // ✅ respond ONCE only (customer create confirm)
@@ -1075,19 +1302,12 @@ app.post("/customers", async (req, res) => {
       return;
     }
 
-    const fromEmail = process.env.RESEND_FROM || "onboarding@resend.dev"; 
-    // ✅ later: noreply@stareng.co.in (when domain verified)
-
-    await resend.emails.send({
-      from: `STAR Engineering <${fromEmail}>`,
-      to: created.email,
-      subject: "Welcome to STAR Engineering – Your Portal Login",
-      html: welcomeEmailHTML({
-        name: created.name,
-        email: created.email,
-        password: String(password),
-      }),
-    });
+await resend.emails.send({
+  from: RESEND_FROM_FMT,
+  to: created.email,
+  subject: "Welcome to STAR Engineering – Your Portal Login",
+  html: welcomeEmailHTML({ name: created.name, email: created.email, password: String(password) }),
+});
 
     console.log("✅ WELCOME EMAIL SENT (Resend) =>", created.email);
   } catch (mailErr) {
@@ -1106,7 +1326,7 @@ app.get("/ping", (req, res) => {
   res.status(200).send("OK");
 });
 // ✅ Update customer (password optional reset)
-app.put("/customers/:id", async (req, res) => {
+app.put("/customers/:id", requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { name, email, password, address, state, gstin } = req.body || {};
@@ -1496,6 +1716,26 @@ function detectDocType(lines, compactLower) {
 
   return "SALE";
 }
+function codeFromFilename(keyword, originalName) {
+  const fname = String(originalName || "").trim();
+  if (!fname) return "";
+
+  const base = fname.split(/[\\/]/).pop().replace(/\.pdf$/i, "");
+
+  // keyword ko normalize
+  const k = String(keyword || "")
+    .toLowerCase()
+    .replace(/\s+/g, "[_\\-\\s]*"); // debit note / debit_note / debit-note sab match
+
+  // Examples:
+  // "DebitNote_12.pdf" -> 12
+  // "Debit Note-DBN001.pdf" -> DBN001
+  // "debit_note DBN001 any.pdf" -> DBN001
+  const re = new RegExp("^" + k + "[_\\-\\s]*([A-Za-z0-9]+)\\b", "i");
+  const m = base.match(re);
+
+  return m?.[1] ? String(m[1]).trim().toUpperCase() : "";
+}
 function paymentCodeFromFilename(originalName) {
   const fname = String(originalName || "").trim();
   if (!fname) return "";
@@ -1562,15 +1802,29 @@ function saleCodeFromFilename(originalName) {
 function pickVoucherNo(type, lines, compact, originalName) {
   const t = compact;
 
-    function codeFromFilename(prefix) {
+    function receiptCodeFromFilename(originalName) {
     const fname = String(originalName || "").trim();
     if (!fname) return "";
     const base = fname.split(/[\\/]/).pop().replace(/\.pdf$/i, "");
 
-    // supports: Receipt_2, Receipt-2, Credit Note_2, CreditNote_2, Purchase_3 etc
-    const rx = new RegExp("^" + prefix + "[_\\-\\s]*([A-Za-z0-9]+)\\b", "i");
-    const m = base.match(rx);
+    // Receipt_2 / Receipt-2 / Receipt 2
+    const m = base.match(/^receipt[_\-\s]*([A-Za-z0-9]+)\b/i);
     return m?.[1] ? String(m[1]).trim() : "";
+  }
+
+  // ✅ ADD THIS BLOCK
+  if (type === "RECEIPT") {
+    // 1) FIRST PRIORITY: filename Receipt_2.pdf -> 2
+    const fromFile = receiptCodeFromFilename(originalName);
+    if (fromFile) return norm(fromFile);
+
+    // 2) SECOND PRIORITY: PDF text "No. : 2"
+    const fromText =
+      t.match(/\bReceipt\s+Voucher\b[\s\S]{0,120}?\bNo\.\s*:?\s*([A-Z0-9\-\/]+)/i)?.[1] ||
+      t.match(/\bNo\.\s*:?\s*([0-9A-Za-z\/-]+)\b/i)?.[1] ||
+      "";
+
+    return norm(fromText);
   }
 if (type === "SALE") {
   // ✅ FORCE: always from filename only (Sales_<billno>.pdf)
@@ -1581,28 +1835,14 @@ if (type === "SALE") {
   return "";
 }
 
-if (type === "RECEIPT") {
-  // 1) Same line: "No. : 2 Dated : 2-Mar-26"
-  const mSame = compact.match(/\bNo\.\s*:\s*([A-Za-z0-9\/-]+)\b/i);
-  if (mSame?.[1]) return norm(mSame[1]);
+function receiptCodeFromFilename(originalName) {
+  const fname = String(originalName || "").trim();
+  if (!fname) return "";
+  const base = fname.split(/[\\/]/).pop().replace(/\.pdf$/i, "");
 
-  // 2) If "No." is on its own line, take NEXT token (but not a date)
-  for (let i = 0; i < lines.length; i++) {
-    const l = norm(lines[i]);
-    if (/^No\.\s*:?\s*$/i.test(l) || /^No\.$/i.test(l)) {
-      for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
-        const v = norm(lines[j]);
-        if (!v) continue;
-
-        // if line is like "2 2-Mar-26" => take first token
-        const parts = v.split(/\s+/).filter(Boolean);
-        const first = parts[0] || "";
-        if (first && !/^\d{1,2}-[A-Za-z]{3}-\d{2,4}$/.test(first)) return first;
-      }
-    }
-  }
-
-  return "";
+  // Receipt_2 / Receipt-2 / Receipt 2
+  const m = base.match(/^receipt[_\-\s]*([A-Za-z0-9]+)\b/i);
+  return m?.[1] ? String(m[1]).trim() : "";
 }
 
   if (type === "PAYMENT") {
@@ -1666,14 +1906,21 @@ if (type === "RECEIPT") {
 }
 
 function pickDate(type, lines, compact, originalName) {
-    // ✅ Receipt: "Dated : 2-May-25" (same line)
-  const mSame = compact.match(/\bDated\s*:\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})\b/i);
-  if (mSame?.[1]) {
-    const iso = parseDateLooseAny(mSame[1]);
+  // ✅ RECEIPT/PAYMENT often: "No. : 2 Dated : 2-Mar-26"
+  const mNoDated = compact.match(/\bDated\s*:\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})\b/i);
+  if (mNoDated?.[1]) {
+    const iso = parseDateLooseAny(mNoDated[1]);
     if (iso) return iso;
   }
-  // Prefer explicit "Date :" for Payment Advice, otherwise "Dated"
-  let d = "";
+
+  // ✅ EXTRA fallback: scan lines for first date token (Receipt bank line also has date)
+  for (const ln of lines) {
+    const m = String(ln).match(/\b(\d{1,2}-[A-Za-z]{3}-\d{2,4}|\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\b/);
+    if (m?.[1]) {
+      const iso = parseDateLooseAny(m[1]);
+      if (iso) return iso;
+    }
+  }
 if (type === "PAYMENT") {
   // Payment Advice me usually "Date : dd-mm-yyyy" / or Dated
   const mPay =
@@ -1748,6 +1995,21 @@ function pickParty(type, lines, compact) {
 
   return "";
 }
+function pickReceiptAmount(lines) {
+  // find "Account :" then next lines contain "PartyName 4,69,140.00"
+  for (let i = 0; i < lines.length; i++) {
+    const l = norm(lines[i]).toLowerCase();
+    if (l === "account :" || l === "account:") {
+      // scan next 5 lines for decimal amount
+      for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
+        const v = String(lines[j] || "");
+        const m = v.match(/\b\d[\d,]*\.\d{2}\b/);
+        if (m?.[0]) return moneyToNumber(m[0]);
+      }
+    }
+  }
+  return 0;
+}
 
 function extractFromPdfSmart(parsedText, originalName) {
   const lines = cleanLines(parsedText);
@@ -1758,23 +2020,16 @@ function extractFromPdfSmart(parsedText, originalName) {
   const partyName = pickParty(type, lines, compact);
   const voucherNo = pickVoucherNo(type, lines, compact, originalName);
   const date = pickDate(type, lines, compact, originalName);
-  const amount = pickTotalAmount(lines);
+
+  let amount = 0;
+  if (type === "RECEIPT") amount = pickReceiptAmount(lines) || pickTotalAmount(lines);
+  else amount = pickTotalAmount(lines);
 
   const { eWayBillNo } =
     type === "SALE" ? findInvoiceAndEway(lines) : { eWayBillNo: "" };
 
-  return {
-    type,
-    partyName,
-    voucherNo,
-    eWayBillNo: eWayBillNo || "",
-    date,
-    amount: Number(amount || 0),
-    drcr: drcrForType(type),
-    narration: "",
-  };
+  return { type, partyName, voucherNo, eWayBillNo: eWayBillNo || "", date, amount: Number(amount || 0), drcr: drcrForType(type), narration: "" };
 }
-
 app.post("/transactions/scan", uploadMem.single("pdf"), async (req, res) => {
   try {
     if (!pdfParse) return res.status(500).json({ message: "pdf-parse not installed" });
@@ -1846,37 +2101,112 @@ app.get("/transactions", async (req, res) => {
 });
 
 // create txn (+ pdfs)
-app.post("/transactions", uploadDisk.array("pdfs"), async (req, res) => {
-  const { type, voucherNo, date, amount, drcr, narration, partyId } = req.body;
+// create txn (+ pdfs) + AUTO EMAIL
+app.post("/transactions", requireAdmin, uploadDisk.array("pdfs"), async (req, res) => {
+  try {
+    const { type, voucherNo, date, amount, drcr, narration, partyId } = req.body;
 
-  const txn = await prisma.transaction.create({
-    data: {
-      type,
-      voucherNo,
-      date: new Date(date),
-      amount: Number(amount),
-      drcr,
-      narration,
-      partyId: Number(partyId),
-      createdById: 1,
-    },
-  });
-
-  if (req.files?.length) {
-    for (const file of req.files) {
-      await prisma.transactionPDF.create({
-        data: {
-          transactionId: txn.id,
-          filePath: file.filename,
-          originalName: file.originalname,
-          mimeType: file.mimetype,
-          size: file.size,
-        },
-      });
+    // ✅ meta from frontend (FormData -> string)
+    let meta = {};
+    try {
+      meta = req.body.meta ? JSON.parse(req.body.meta) : {};
+    } catch {
+      meta = {};
     }
-  }
 
-  res.json(txn);
+    const txn = await prisma.transaction.create({
+      data: {
+        type,
+        voucherNo,
+        date: new Date(date),
+        amount: Number(amount),
+        drcr,
+        narration,
+        partyId: Number(partyId),
+        createdById: 1,
+      },
+    });
+
+    if (req.files?.length) {
+      for (const file of req.files) {
+        await prisma.transactionPDF.create({
+          data: {
+            transactionId: txn.id,
+            filePath: file.filename,
+            originalName: file.originalname,
+            mimeType: file.mimetype,
+            size: file.size,
+          },
+        });
+      }
+    }
+
+    // ✅ respond immediately (never block)
+    res.json({ ok: true, txn });
+
+    // ✅ background email
+    setImmediate(async () => {
+      try {
+        const party = await prisma.user.findUnique({
+          where: { id: Number(partyId) },
+          select: { id: true, name: true, email: true, gstin: true },
+        });
+
+        if (!party?.email) {
+          console.warn("⚠️ PARTY EMAIL missing, skip send");
+          return;
+        }
+
+        // build meta defaults from txn as well
+const amt2 = Number(amount || 0).toFixed(2);
+const drcr2 = String(drcr || "").toUpperCase();          // "DR" / "CR"
+const narration2 = String(narration || "").trim();
+
+const meta2 = {
+  ...meta,
+
+  // common
+  voucherNo: voucherNo || "",
+  VoucherNo: voucherNo || "",           // ✅ template uses {{VoucherNo}}
+  date: date || "",
+  advice_date: date || "",              // ✅ template uses {{advice_date}}
+  amount: amt2,
+  total_amount: amt2,                   // ✅ template uses {{total_amount}}
+
+  // ✅ journal must-have
+  drcr: drcr2,
+  DRCR: drcr2,
+  narration: narration2,
+
+  // ✅ bank-style summary (we'll add placeholder in template)
+  summary_line: (() => {
+    const verb = drcr2 === "DR" ? "debited" : drcr2 === "CR" ? "credited" : "updated";
+    const nar = narration2 ? ` on account of "${narration2}"` : "";
+    return `Your A/c has been ${verb} with ₹ ${amt2}${nar}.`;
+  })(),
+};
+
+        const html = buildTxnEmailHTML(type, meta2, party);
+
+        const attachments = (req.files || []).map(fileToResendAttachmentFromDisk);
+
+        await resend.emails.send({
+          from: RESEND_FROM_FMT,
+          to: party.email,
+          subject: subjectForType(type, meta2),
+          html,
+          attachments: attachments.length ? attachments : undefined,
+        });
+
+        console.log("✅ TXN EMAIL SENT:", party.email, "type:", type);
+      } catch (e) {
+        console.error("❌ TXN EMAIL FAILED:", e?.message || e);
+      }
+    });
+  } catch (e) {
+    console.error("CREATE TXN ERROR:", e);
+    return res.status(500).json({ message: "Create txn failed", details: String(e.message || e) });
+  }
 });
 
 // update txn
@@ -2617,7 +2947,16 @@ app.get("/customer-portal/export-ledger-pdf", requireCustomer, async (req, res) 
 app.get("/", (req, res) => {
   res.send("STAR ENGINEERING API RUNNING 🚀");
 });
-
+// ✅ Multer error handler (so "too many files" doesn't become 500)
+app.use((err, req, res, next) => {
+  if (err && err.code === "LIMIT_UNEXPECTED_FILE") {
+    return res.status(400).json({
+      message: "Too many files uploaded",
+      details: err.message,
+    });
+  }
+  return next(err);
+});
 app.listen(PORT, () => {
   console.log("Server running on port:", PORT);
 });
