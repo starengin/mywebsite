@@ -124,7 +124,15 @@ function welcomeEmailHTML({ name, email, password }) {
     "https://docs5.odoo.com/documents/content/Zir5Nx_CQDG3RHRyCDjt9gof5?download=0";
 
   const party = name || "Customer";
-
+const passwordRow = password
+  ? `
+    <tr style="background:linear-gradient(90deg,#fff6ec,#ffffff);">
+      <td style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);"><b>Password</b></td>
+      <td style="padding:12px 14px;border-bottom:1px solid rgba(17,24,39,0.08);">
+        <span style="font-weight:bold;color:#7a0000;">${password}</span>
+      </td>
+    </tr>`
+  : ``;
   return `
 <table align="center" width="100%" cellpadding="0" cellspacing="0" style="
   max-width:600px;
@@ -164,7 +172,7 @@ function welcomeEmailHTML({ name, email, password }) {
           <tbody>
             <tr>
               <td width="100" valign="middle">
-                <img src="${logoUrl}" alt="${company}" style="
+                <img src="${logoUrl}" alt="STAR ENGINEERING" style="
                   max-width:80px;
                   display:block;
                   border-radius:10px;
@@ -180,7 +188,7 @@ function welcomeEmailHTML({ name, email, password }) {
                   color:#ffffff;
                   font-weight:bold;
                   text-shadow:0 4px 14px rgba(0,0,0,0.50);
-                ">${company}</h1>
+                ">STAR ENGINEERING</h1>
                 <p style="
                   margin:6px 0 0 0;
                   font-size:15px;
@@ -212,7 +220,7 @@ function welcomeEmailHTML({ name, email, password }) {
           </p>
 
           <p style="font-size:15px; line-height:1.8; margin:0 0 18px 0; color:#1f2937;">
-            Greetings from <b>${company}</b>.<br>
+            Greetings from <b>STAR ENGINEERING</b>.<br>
             Your User portal account has been successfully created. Please use the credentials below to login.
           </p>
 
@@ -285,7 +293,7 @@ function welcomeEmailHTML({ name, email, password }) {
 
             <p style="font-size:15px;margin:16px 0 0 0;color:#1f2937;">
               Warm Regards,<br>
-              <b>${company}</b><br>
+              <b>STAR ENGINEERING</b><br>
               📧 <a target="_blank" href="mailto:corporate@stareng.co.in" style="color:#a100ff;text-decoration:none;font-weight:bold;">
                 corporate@stareng.co.in
               </a><br>
@@ -684,6 +692,7 @@ app.use(express.urlencoded({ extended: true }));
 const ALLOWED_ORIGINS = new Set([
   "http://localhost:5173",
   "http://localhost:3000",
+  "http://localhost:5174", // ✅ ADD THIS
 
   "https://www.stareng.co.in",
   "https://stareng.co.in",
@@ -1252,9 +1261,10 @@ app.get("/customers", requireAdmin, async (req, res) => {
 
 // ✅ Create customer + send welcome email (email + password + login button)
 // ✅ Create customer + send welcome email (NON-BLOCKING)
+// ✅ Create customer + OPTIONAL welcome email
 app.post("/customers", requireAdmin, async (req, res) => {
   try {
-    const { name, email, password } = req.body || {};
+    const { name, email, password, sendEmail } = req.body || {};
 
     if (!name || !email || !password) {
       return res.status(400).json({ message: "Name, Email, Password required" });
@@ -1262,14 +1272,11 @@ app.post("/customers", requireAdmin, async (req, res) => {
 
     const cleanEmail = String(email).toLowerCase().trim();
 
-    // ✅ duplicate email check
     const exists = await prisma.user.findFirst({
       where: { email: cleanEmail },
       select: { id: true },
     });
-    if (exists) {
-      return res.status(400).json({ message: "Email already exists" });
-    }
+    if (exists) return res.status(400).json({ message: "Email already exists" });
 
     const hash = await bcrypt.hash(String(password), 10);
 
@@ -1280,46 +1287,96 @@ app.post("/customers", requireAdmin, async (req, res) => {
         email: cleanEmail,
         passwordHash: hash,
       },
-      select: {
-  id: true,
-  name: true,
-  email: true,
-  phone: true,
-  gstin: true,
-  address: true,
-  state: true,
-},
+      select: { id: true, name: true, email: true, phone: true, gstin: true, address: true, state: true },
     });
 
-    // ✅ respond ONCE only (customer create confirm)
-    res.json({ ok: true, customer: created });
+    // ✅ default behavior: sendEmail = true unless explicitly false
+    const shouldSend = sendEmail === undefined ? true : !!sendEmail;
 
-    // ✅ WELCOME EMAIL in background (best effort)
+    // respond immediately
+    res.json({ ok: true, customer: created, emailQueued: shouldSend });
+
+    if (!shouldSend) return;
+
     setImmediate(async () => {
-  try {
-    if (!process.env.RESEND_API_KEY) {
-      console.error("WELCOME: RESEND_API_KEY missing");
-      return;
-    }
+      try {
+        if (!process.env.RESEND_API_KEY) {
+          console.error("WELCOME: RESEND_API_KEY missing");
+          return;
+        }
 
-await resend.emails.send({
-  from: RESEND_FROM_FMT,
-  to: created.email,
-  subject: "Welcome to STAR Engineering – Your Portal Login",
-  html: welcomeEmailHTML({ name: created.name, email: created.email, password: String(password) }),
-});
+        await resend.emails.send({
+          from: RESEND_FROM_FMT,
+          to: created.email,
+          subject: "Welcome to STAR Engineering – Your Portal Login",
+          html: welcomeEmailHTML({
+            name: created.name,
+            email: created.email,
+            password: password ? String(password) : undefined,
+          }),
+        });
 
-    console.log("✅ WELCOME EMAIL SENT (Resend) =>", created.email);
-  } catch (mailErr) {
-    console.error("❌ WELCOME EMAIL FAILED (Resend):", mailErr?.message || mailErr);
-  }
-});
+        console.log("✅ WELCOME EMAIL SENT:", created.email);
+      } catch (mailErr) {
+        console.error("❌ WELCOME EMAIL FAILED:", mailErr?.message || mailErr);
+      }
+    });
   } catch (e) {
     console.error("CREATE CUSTOMER ERROR:", e);
-    return res.status(500).json({
-      message: "Create failed",
-      details: String(e.message || e),
+    return res.status(500).json({ message: "Create failed", details: String(e.message || e) });
+  }
+});
+// ✅ Resend / Send customer login credentials (ADMIN sets password)
+app.post("/customers/:id/send-welcome-email", requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { password } = req.body || {};
+
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, name: true, email: true, role: true },
     });
+
+    if (!user || user.role !== "CUSTOMER") {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+    if (!user.email) {
+      return res.status(400).json({ message: "Customer email missing" });
+    }
+
+// ✅ password optional: only update if provided
+if (password && String(password).trim().length >= 4) {
+  const hash = await bcrypt.hash(String(password), 10);
+  await prisma.user.update({
+    where: { id },
+    data: { passwordHash: hash },
+  });
+}
+
+    // respond fast
+    res.json({ ok: true, queued: true });
+
+    setImmediate(async () => {
+      try {
+        await resend.emails.send({
+          from: RESEND_FROM_FMT,
+          to: user.email,
+          subject: "STAR Engineering – Portal Login Credentials",
+          html: welcomeEmailHTML({
+            name: user.name,
+            email: user.email,
+            password: password ? String(password) : "",
+          }),
+        });
+        console.log("✅ CUSTOMER CREDENTIAL EMAIL SENT:", user.email);
+      } catch (e) {
+        console.error("❌ CUSTOMER RESEND FAILED:", e?.message || e);
+      }
+    });
+  } catch (e) {
+    console.error("CUSTOMER RESEND ERROR:", e);
+    res.status(500).json({ message: "Resend failed", details: String(e.message || e) });
   }
 });
 app.get("/ping", (req, res) => {
@@ -1354,7 +1411,7 @@ if (password) data.passwordHash = await bcrypt.hash(String(password), 10);
 });
 
 // ✅ Delete customer (block if transactions exist)
-app.delete("/customers/:id", async (req, res) => {
+app.delete("/customers/:id", requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
 
@@ -2099,12 +2156,28 @@ app.get("/transactions", async (req, res) => {
     res.status(400).json({ error: "List failed", details: String(e.message || e) });
   }
 });
+function normVoucher(v) {
+  return String(v || "").trim().toUpperCase();
+}
 
+// Same-day range (timezone safe)
+function dayRange(dateStr) {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return null;
+
+  const start = new Date(d);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(d);
+  end.setHours(23, 59, 59, 999);
+
+  return { start, end };
+}
 // create txn (+ pdfs)
 // create txn (+ pdfs) + AUTO EMAIL
 app.post("/transactions", requireAdmin, uploadDisk.array("pdfs"), async (req, res) => {
   try {
-    const { type, voucherNo, date, amount, drcr, narration, partyId } = req.body;
+    const { type, voucherNo, date, amount, drcr, narration, partyId, sendEmail } = req.body;
 
     // ✅ meta from frontend (FormData -> string)
     let meta = {};
@@ -2113,11 +2186,45 @@ app.post("/transactions", requireAdmin, uploadDisk.array("pdfs"), async (req, re
     } catch {
       meta = {};
     }
+    // ✅ DUPLICATE CHECK: voucherNo + date(same day) + type + partyId
+    const vNo = normVoucher(voucherNo);
+    const tType = String(type || "").trim().toUpperCase();
+    const pId = Number(partyId);
 
+    if (!vNo || !tType || !date || !pId) {
+      return res.status(400).json({ message: "voucherNo, type, date, partyId required" });
+    }
+
+    const range = dayRange(date);
+    if (!range) {
+      return res.status(400).json({ message: "Invalid date" });
+    }
+
+    const dup = await prisma.transaction.findFirst({
+      where: {
+        partyId: pId,
+        voucherNo: vNo,
+        type: tType,
+        date: { gte: range.start, lte: range.end }, // same day
+      },
+      select: { id: true, voucherNo: true, type: true, date: true },
+    });
+
+    if (dup) {
+      return res.status(409).json({
+        message: `Duplicate transaction: same Voucher No + Date + Type already exists`,
+        duplicate: {
+          id: dup.id,
+          voucherNo: dup.voucherNo,
+          type: dup.type,
+          date: dup.date,
+        },
+      });
+    }
     const txn = await prisma.transaction.create({
       data: {
-        type,
-        voucherNo,
+        type: tType,
+        voucherNo: vNo,
         date: new Date(date),
         amount: Number(amount),
         drcr,
@@ -2142,7 +2249,15 @@ app.post("/transactions", requireAdmin, uploadDisk.array("pdfs"), async (req, re
     }
 
     // ✅ respond immediately (never block)
-    res.json({ ok: true, txn });
+    const shouldSend =
+  sendEmail === undefined
+    ? true
+    : (String(sendEmail) === "true" || String(sendEmail) === "1");
+
+// ✅ respond immediately (never block)
+res.json({ ok: true, txn, emailQueued: shouldSend });
+
+if (!shouldSend) return; // ✅ skip sending
 
     // ✅ background email
     setImmediate(async () => {
@@ -2208,7 +2323,79 @@ const meta2 = {
     return res.status(500).json({ message: "Create txn failed", details: String(e.message || e) });
   }
 });
+// ✅ Resend transaction email with existing PDFs (eye button)
+app.post("/transactions/:id/send-email", requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
 
+    const txn = await prisma.transaction.findUnique({
+      where: { id },
+      include: { pdfs: true },
+    });
+    if (!txn) return res.status(404).json({ message: "Transaction not found" });
+
+    const party = await prisma.user.findUnique({
+      where: { id: Number(txn.partyId) },
+      select: { id: true, name: true, email: true, gstin: true },
+    });
+    if (!party?.email) return res.status(400).json({ message: "Party email missing" });
+
+    res.json({ ok: true, queued: true });
+
+    setImmediate(async () => {
+      try {
+        const amt2 = Number(txn.amount || 0).toFixed(2);
+        const drcr2 = String(txn.drcr || "").toUpperCase();
+        const narration2 = String(txn.narration || "").trim();
+
+        const meta2 = {
+          voucherNo: txn.voucherNo || "",
+          VoucherNo: txn.voucherNo || "",
+          date: txn.date ? txn.date.toISOString().slice(0, 10) : "",
+          advice_date: txn.date ? txn.date.toISOString().slice(0, 10) : "",
+          amount: amt2,
+          total_amount: amt2,
+          drcr: drcr2,
+          DRCR: drcr2,
+          narration: narration2,
+          summary_line: (() => {
+            const verb = drcr2 === "DR" ? "debited" : drcr2 === "CR" ? "credited" : "updated";
+            const nar = narration2 ? ` on account of "${narration2}"` : "";
+            return `Your A/c has been ${verb} with ₹ ${amt2}${nar}.`;
+          })(),
+        };
+
+        const html = buildTxnEmailHTML(txn.type, meta2, party);
+
+        const attachments = (txn.pdfs || [])
+          .map((p) => {
+            const diskPath = path.join(UPLOAD_DIR, p.filePath);
+            if (!fs.existsSync(diskPath)) return null;
+            return {
+              filename: p.originalName || "attachment.pdf",
+              content: fs.readFileSync(diskPath).toString("base64"),
+            };
+          })
+          .filter(Boolean);
+
+        await resend.emails.send({
+          from: RESEND_FROM_FMT,
+          to: party.email,
+          subject: subjectForType(txn.type, meta2),
+          html,
+          attachments: attachments.length ? attachments : undefined,
+        });
+
+        console.log("✅ TXN RESENT:", party.email, "txn:", txn.id);
+      } catch (e) {
+        console.error("❌ TXN RESEND FAILED:", e?.message || e);
+      }
+    });
+  } catch (e) {
+    console.error("TXN RESEND ERROR:", e);
+    res.status(500).json({ message: "Resend failed", details: String(e.message || e) });
+  }
+});
 // update txn
 app.put("/transactions/:id", async (req, res) => {
   try {

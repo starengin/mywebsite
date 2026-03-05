@@ -191,15 +191,16 @@ export default function Transactions() {
   const [mode, setMode] = useState("create"); // create | view | edit
   const [saving, setSaving] = useState(false);
 
-  const blank = {
-    type: "SALE",
-    partyId: "",
-    date: todayISO(),
-    voucherNo: "",
-    amount: "",
-    drcr: drcrForType("SALE"),
-    narration: "",
-  };
+const blank = {
+  type: "SALE",
+  partyId: "",
+  date: todayISO(),
+  voucherNo: "",
+  amount: "",
+  drcr: drcrForType("SALE"),
+  narration: "",
+  sendEmail: false, // ✅ NEW
+};
   const [form, setForm] = useState(blank);
 
   // selected row for edit/view
@@ -283,6 +284,7 @@ export default function Transactions() {
     drcr: drcrForType(t),
     partyId: "", // ✅ no default party
     date: todayISO(),
+    sendEmail: false, // ✅ NEW
   });
 
   resetAttachState();
@@ -302,6 +304,7 @@ export default function Transactions() {
       amount: String(row?.amount ?? ""),
       drcr: row?.drcr || drcrForType(row?.type),
       narration: row?.narration || "",
+      sendEmail: false,
     });
 
     resetAttachState();
@@ -321,6 +324,7 @@ export default function Transactions() {
       amount: String(row?.amount ?? ""),
       drcr: row?.drcr || drcrForType(row?.type),
       narration: row?.narration || "",
+      sendEmail: false,
     });
 
     resetAttachState();
@@ -507,6 +511,7 @@ setForm((p) => ({
         fd.append("amount", String(amt));
         fd.append("drcr", drcr);
         fd.append("narration", form.type === "JOURNAL" ? String(form.narration || "") : (form.narration || ""));
+        fd.append("sendEmail", form.sendEmail ? "1" : "0");
 
         // ✅ auto attach scanned pdf (if any)
         if (scanFile) fd.append("pdfs", scanFile);
@@ -539,6 +544,7 @@ setForm((p) => ({
           amount: String(amt),
           drcr,
           narration: form.type === "JOURNAL" ? String(form.narration || "") : (form.narration || ""),
+          sendEmail: !!form.sendEmail,
         };
 
         await callApiMaybe(
@@ -711,6 +717,21 @@ setForm((p) => ({
                         <IconBtn title="Edit" onClick={() => openEdit(r)}>
                           ✏️
                         </IconBtn>
+                          <IconBtn
+    title="Send Transaction Email"
+    onClick={async () => {
+      try {
+        const ok = confirm("Send email for this transaction?");
+        if (!ok) return;
+        await api.sendTransactionEmail(r.id);
+        alert("Email sent ✅");
+      } catch (e) {
+        alert(e?.response?.data?.message || e.message || "Failed to send email");
+      }
+    }}
+  >
+    ✉️
+  </IconBtn>
                         <IconBtn title="Delete" danger onClick={() => onDelete(r)}>
                           🗑
                         </IconBtn>
@@ -940,6 +961,21 @@ if (p.url) {
               </div>
             ) : null}
           </Field>
+          {canEdit && (
+  <div style={{ marginTop: 6 }}>
+    <label style={{ display: "flex", gap: 10, alignItems: "center", fontWeight: 900, fontSize: 12, color: "#0f172a" }}>
+      <input
+        type="checkbox"
+        checked={!!form.sendEmail}
+        onChange={(e) => setForm((p) => ({ ...p, sendEmail: e.target.checked }))}
+      />
+      Send transaction email
+    </label>
+    <div style={{ marginTop: 4, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+      Uncheck = save only (no email).
+    </div>
+  </div>
+)}
         </div>
 
         <div style={S.modalFoot}>

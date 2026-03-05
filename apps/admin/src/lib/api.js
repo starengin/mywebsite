@@ -10,7 +10,7 @@ const API = axios.create({
 });
 
 API.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -37,6 +37,10 @@ export const api = {
   updateCustomer: (id, data) => getData(API.put(`/customers/${id}`, data)),
   deleteCustomer: (id) => getData(API.delete(`/customers/${id}`)),
 
+  // ✅ NEW: send credentials email later (backend endpoint needed)
+sendCustomerCredentials: (id, password) =>
+  getData(API.post(`/customers/${id}/send-welcome-email`, { password })),
+
   // ✅ Transactions
   transactions: (params) => getData(API.get("/transactions", { params })),
 
@@ -50,6 +54,9 @@ export const api = {
 
   updateTransaction: (id, data) => getData(API.put(`/transactions/${id}`, data)),
   deleteTransaction: (id) => getData(API.delete(`/transactions/${id}`)),
+    // ✅ resend transaction email later (backend endpoint needed)
+  sendTransactionEmail: (id) =>
+    getData(API.post(`/transactions/${id}/send-email`)),
 
   // ✅ Scan PDF
   scanTransactionPDF: (file) => {

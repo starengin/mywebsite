@@ -1,6 +1,8 @@
 ﻿import { getToken, logout } from "./auth.js";
 
-const API = import.meta.env.VITE_API_URL;
+const API =
+  import.meta.env.VITE_API_URL ||
+  "http://localhost:5000";
 const PUBLIC_HOME = import.meta.env.VITE_PUBLIC_HOME_URL || "https://www.stareng.co.in";
 
 async function request(path, { method = "GET", body } = {}) {

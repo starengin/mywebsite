@@ -69,7 +69,7 @@ export default function Customers() {
   const [mode, setMode] = useState("create"); // create | edit | view
   const [saving, setSaving] = useState(false);
 
-  const blank = { name: "", email: "", password: "" };
+  const blank = { name: "", email: "", password: "", sendEmail: true };
   const [form, setForm] = useState(blank);
 
   async function load(keepSelectionId) {
@@ -119,6 +119,7 @@ export default function Customers() {
       name: row?.name || "",
       email: row?.email || "",
       password: "",
+      sendEmail: false,
     });
     setOpen(true);
   }
@@ -130,6 +131,7 @@ export default function Customers() {
       name: row?.name || "",
       email: row?.email || "",
       password: "",
+      sendEmail: false,
     });
     setOpen(true);
   }
@@ -149,6 +151,7 @@ export default function Customers() {
           name: form.name.trim(),
           email: form.email.trim().toLowerCase(),
           password: form.password,
+          sendEmail: !!form.sendEmail, // ✅ NEW
         });
 
         await load();
@@ -161,7 +164,10 @@ export default function Customers() {
           name: form.name.trim(),
           email: form.email.trim().toLowerCase(),
         };
-        if (form.password.trim()) payload.password = form.password;
+                if (form.password.trim()) {
+          payload.password = form.password;
+          payload.sendEmail = !!form.sendEmail; // ✅ if password reset + checkbox true
+        }
 
         await api.updateCustomer(selected.id, payload);
         await load(selected.id);
@@ -227,16 +233,34 @@ export default function Customers() {
                   <div style={S.nameOnly}>{row.name}</div>
 
                   <div style={S.actions}>
-                    <IconBtn title="View" onClick={() => openView(row)}>
-                      👁
-                    </IconBtn>
-                    <IconBtn title="Edit" onClick={() => openEdit(row)}>
-                      ✏️
-                    </IconBtn>
-                    <IconBtn title="Delete" danger onClick={() => onDelete(row)}>
-                      🗑
-                    </IconBtn>
-                  </div>
+  <IconBtn title="View" onClick={() => openView(row)}>👁</IconBtn>
+
+  <IconBtn title="Edit" onClick={() => openEdit(row)}>✏️</IconBtn>
+
+<IconBtn
+  title="Send Credentials Email"
+  onClick={async () => {
+    try {
+      const newPass = prompt(
+        `Enter NEW password for "${row.name}" (min 4 chars).\n\nNote: Old password retrieve nahi ho sakta.`
+      );
+      if (newPass === null) return; // cancel
+      if (!String(newPass).trim() || String(newPass).trim().length < 4) {
+        return alert("Password required (min 4 chars)");
+      }
+
+      await api.sendCustomerCredentials(row.id, String(newPass).trim());
+      alert("Email sent ✅ (password reset done)");
+    } catch (e) {
+      alert(e?.response?.data?.message || e.message || "Failed to send email");
+    }
+  }}
+>
+  ✉️
+</IconBtn>
+
+  <IconBtn title="Delete" danger onClick={() => onDelete(row)}>🗑</IconBtn>
+</div>
                 </div>
               ))}
             </div>
@@ -284,6 +308,39 @@ export default function Customers() {
               placeholder={mode === "edit" ? "Leave blank to keep same" : ""}
             />
           </Field>
+          {mode !== "view" && (
+  <div style={{ marginTop: 6 }}>
+    <label
+      style={{
+        display: "flex",
+        gap: 10,
+        alignItems: "center",
+        fontWeight: 900,
+        fontSize: 12,
+        color: "#0f172a",
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={!!form.sendEmail}
+        onChange={(e) =>
+          setForm((p) => ({ ...p, sendEmail: e.target.checked }))
+        }
+      />
+      Send credentials email
+    </label>
+    <div
+      style={{
+        marginTop: 4,
+        fontSize: 12,
+        color: "#64748b",
+        fontWeight: 700,
+      }}
+    >
+      Uncheck = user create ho jayega, email nahi jayega.
+    </div>
+  </div>
+)}
         </div>
 
         <div style={S.modalFoot}>
@@ -298,7 +355,13 @@ export default function Customers() {
               disabled={saving}
               style={S.primary}
             >
-              {saving ? "Saving..." : mode === "create" ? "Create & Send Email" : "Save Changes"}
+              {saving
+  ? "Saving..."
+  : mode === "create"
+  ? form.sendEmail
+    ? "Create & Send Email"
+    : "Create User"
+  : "Save Changes"}
             </motion.button>
           )}
         </div>

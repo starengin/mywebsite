@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "../lib/api.js";
 import Loader from "../components/ui/Loader";
+import { setToken, markLoginNow } from "../lib/auth"; // top me add
 
 const block = (e) => {
   e.preventDefault();
@@ -74,8 +75,9 @@ export default function Login() {
         return;
       }
 
-      localStorage.setItem("token", token);
-      window.location.href = "/";
+setToken(token);
+markLoginNow();
+window.location.replace("/");
     } catch (e2) {
       setErr(e2?.response?.data?.message || e2?.message || "Login failed");
       await loadCaptcha();

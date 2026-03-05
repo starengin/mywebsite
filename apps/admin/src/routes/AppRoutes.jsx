@@ -8,7 +8,6 @@ import AdminLayout from "../components/layouts/AdminLayout";
 import ProtectedRoute from "../components/layouts/ProtectedRoute";
 import EmailCenter from "../screens/EmailCenter";
 
-
 export default function AppRoutes() {
   return (
     <Routes>
