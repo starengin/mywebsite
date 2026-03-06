@@ -118,10 +118,10 @@ const smtp = nodemailer.createTransport({
 
 function welcomeEmailHTML({ name, email, password }) {
   const company = process.env.COMPANY_NAME || "STAR ENGINEERING";
-  const loginUrl = process.env.LOGIN_URL || "https://www.stareng.co.in/login";
+  const loginUrl = process.env.LOGIN_URL || "https://portal.stareng.co.in";
   const logoUrl =
     process.env.MAIL_LOGO_URL ||
-    "https://docs5.odoo.com/documents/content/Zir5Nx_CQDG3RHRyCDjt9gof5?download=0";
+    "https://www.stareng.co.in/brand/logo.jpg";
 
   const party = name || "Customer";
 const passwordRow = password
@@ -373,7 +373,7 @@ function contactInquiryEmailHTML({
   const companyName = process.env.COMPANY_NAME || "STAR ENGINEERING";
   const logoUrl =
     process.env.MAIL_LOGO_URL ||
-    "https://docs5.odoo.com/documents/content/Zir5Nx_CQDG3RHRyCDjt9gof5?download=0";
+    "https://www.stareng.co.in/brand/logo.jpg";
 
   const safe = {
     name: esc(name || "-"),
@@ -488,7 +488,7 @@ function contactCustomerAckEmailHTML({ name, subject }) {
   const companyName = process.env.COMPANY_NAME || "STAR ENGINEERING";
   const logoUrl =
     process.env.MAIL_LOGO_URL ||
-    "https://docs5.odoo.com/documents/content/Zir5Nx_CQDG3RHRyCDjt9gof5?download=0";
+    "https://www.stareng.co.in/brand/logo.jpg";
 
   const safeName = esc(name || "Customer");
   const safeSubject = esc(subject || "Requirement Enquiry");
