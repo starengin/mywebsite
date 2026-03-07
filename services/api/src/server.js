@@ -2750,10 +2750,14 @@ app.get("/ledger/:partyId/pdf", requireAdminOrSameCustomer, async (req, res) => 
     const bottom = doc.page.margins.bottom;
     const usableW = pageW - left - right;
 
-    const col = { date: 72, particulars: 0, vchType: 78, vchNo: 78, debit: 78, credit: 78 };
+    const col = { date: 72, particulars: 0, vchType: 78, vchNo: 120, debit: 78, credit: 78 };
     col.particulars = usableW - (col.date + col.vchType + col.vchNo + col.debit + col.credit);
+
     if (col.particulars < 160) {
-      col.vchType = 70; col.vchNo = 70; col.debit = 74; col.credit = 74;
+      col.vchType = 70;
+      col.vchNo = 120;
+      col.debit = 74;
+      col.credit = 74;
       col.particulars = usableW - (col.date + col.vchType + col.vchNo + col.debit + col.credit);
     }
 
@@ -2766,68 +2770,145 @@ app.get("/ledger/:partyId/pdf", requireAdminOrSameCustomer, async (req, res) => 
       credit: left + col.date + col.particulars + col.vchType + col.vchNo + col.debit,
     };
 
-    function hr(y, thickness = 0.7) {
-      doc.save();
-      doc.lineWidth(thickness);
-      doc.moveTo(left, y).lineTo(left + usableW, y).stroke();
-      doc.restore();
-    }
-
     function money2(n) {
       const v = Number(n || 0);
       if (!v) return "";
-      return v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return v.toLocaleString("en-IN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    }
+
+    function rowHeight(particularsText) {
+      const hPart = doc.heightOfString(particularsText || "", {
+        width: col.particulars,
+        align: "left",
+      });
+      return Math.max(13, Math.ceil(hPart)) + 0.5;
     }
 
     function drawHeader() {
       const titleY = top;
-      const gradient = doc.linearGradient(0, titleY, pageW, titleY);
-      gradient.stop(0, "#ff2d55");
-      gradient.stop(0.5, "#7c3aed");
+
+      // ===== STAR premium heading =====
+      const gradient = doc.linearGradient(left, titleY, left + usableW, titleY);
+      gradient.stop(0, "#7f1d1d");
+      gradient.stop(0.28, "#b91c1c");
+      gradient.stop(0.62, "#9333ea");
       gradient.stop(1, "#2563eb");
 
-      doc.font("Helvetica-Bold").fontSize(18).fill(gradient).text("STAR ENGINEERING", 0, titleY, { align: "center" });
-      doc.moveDown(0.5);
+      doc.font("Helvetica-Bold").fontSize(22).fill(gradient);
+      doc.text("STAR ENGINEERING", left, titleY, {
+        width: usableW,
+        align: "center",
+      });
 
-      doc.fillColor("#111827").font("Helvetica").fontSize(9);
-      doc.text("H.N. 303, Sangam C.H.S., Indra Nagar,", { align: "center" });
-      doc.text("Pathan Wadi, R.S. Marg, Malad (E), Mumbai - 400097.", { align: "center" });
-      doc.text("Contact : +91-9702485922  |  E-Mail : corporate@stareng.co.in", { align: "center" });
-      doc.text("www.stareng.co.in", { align: "center" });
+      let y = titleY + 28;
 
-      doc.moveDown(0.8);
+      doc.save();
+      doc.lineWidth(2);
+      const lineGrad = doc.linearGradient(left + 110, y, left + usableW - 110, y);
+      lineGrad.stop(0, "#b91c1c");
+      lineGrad.stop(0.5, "#a100ff");
+      lineGrad.stop(1, "#2563eb");
+      doc.strokeColor(lineGrad);
+      doc.moveTo(left + 110, y).lineTo(left + usableW - 110, y).stroke();
+      doc.restore();
 
-      doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text(String(party.name || ""), { align: "center" });
-      doc.font("Helvetica").fontSize(10).text("Ledger Account", { align: "center" });
-      doc.font("Helvetica").fontSize(9).fillColor("#334155").text(
-        `Period: ${fmtDate(fromDate)} to ${fmtDate(toDate)}`,
-        { align: "center" }
-      );
+      y += 10;
 
-      doc.moveDown(0.8);
+      doc.fillColor("#111827").font("Helvetica").fontSize(10);
+      doc.text("H.N. 303, Sangam C.H.S., Indra Nagar,", left, y, {
+        width: usableW,
+        align: "center",
+      });
+
+      y += 14;
+      doc.text("Pathan Wadi, R.S. Marg, Malad (E), Mumbai - 400097.", left, y, {
+        width: usableW,
+        align: "center",
+      });
+
+      y += 14;
+      doc.text("Contact : +91-9702485922  |  E-Mail : corporate@stareng.co.in", left, y, {
+        width: usableW,
+        align: "center",
+      });
+
+      y += 14;
+// WEBSITE GRADIENT TEXT
+const webGrad = doc.linearGradient(left, y, left + usableW, y);
+webGrad.stop(0, "#b91c1c");   // red
+webGrad.stop(0.4, "#9333ea"); // purple
+webGrad.stop(1, "#2563eb");   // blue
+
+doc.font("Helvetica-Bold").fontSize(10).fill(webGrad);
+doc.text("www.stareng.co.in", left, y, {
+  width: usableW,
+  align: "center",
+});
+
+      y += 24;
+
+      doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(16);
+      doc.text(String(party.name || "").toUpperCase(), left, y, {
+        width: usableW,
+        align: "center",
+      });
+
+      y += 18;
+      doc.font("Helvetica").fontSize(12).fillColor("#374151");
+      doc.text("Ledger Account", left, y, {
+        width: usableW,
+        align: "center",
+      });
+
+      y += 16;
+      doc.font("Helvetica").fontSize(10).fillColor("#6b7280");
+      doc.text(`Period: ${fmtDate(fromDate)} to ${fmtDate(toDate)}`, left, y, {
+        width: usableW,
+        align: "center",
+      });
+
+      y += 18;
+
+      doc.save();
+      doc.lineWidth(1);
+      doc.strokeColor("#d1d5db");
+      doc.moveTo(left, y).lineTo(left + usableW, y).stroke();
+      doc.restore();
+
+      doc.y = y + 10;
       doc.fillColor("#111827");
     }
 
     function drawTableHeader(y) {
-      doc.font("Helvetica-Bold").fontSize(9).fillColor("#111827");
-      hr(y, 0.7); y += 3;
+      doc.save();
+      doc.lineWidth(0.9);
+      doc.strokeColor("#94a3b8");
+      doc.moveTo(left, y).lineTo(left + usableW, y).stroke();
+      doc.restore();
 
+      y += 6;
+
+      doc.font("Helvetica-Bold").fontSize(9).fillColor("#0f172a");
       doc.text("DATE", X.date, y, { width: col.date });
       doc.text("PARTICULARS", X.particulars, y, { width: col.particulars });
       doc.text("VCH NO.", X.vchNo, y, { width: col.vchNo });
       doc.text("DEBIT", X.debit, y, { width: col.debit, align: "right" });
       doc.text("CREDIT", X.credit, y, { width: col.credit, align: "right" });
 
-      y += 10;
-      hr(y, 0.7); y += 3;
+      y += 12;
 
-      doc.font("Helvetica").fontSize(9);
+      doc.save();
+      doc.lineWidth(0.8);
+      doc.strokeColor("#94a3b8");
+      doc.moveTo(left, y).lineTo(left + usableW, y).stroke();
+      doc.restore();
+
+      y += 5;
+      doc.font("Helvetica").fontSize(9).fillColor("#111827");
       return y;
-    }
-
-    function rowHeight(particularsText) {
-      const hPart = doc.heightOfString(particularsText || "", { width: col.particulars, align: "left" });
-      return Math.max(13, Math.ceil(hPart)) + 0.5;
     }
 
     function drawRow(y, r, opts = {}) {
@@ -2843,9 +2924,10 @@ app.get("/ledger/:partyId/pdf", requireAdminOrSameCustomer, async (req, res) => 
       doc.text(money2(r.cr), X.credit, y, { width: col.credit, align: "right" });
 
       if (totalsLine) {
-        const lineY = totalsLine === "above" ? (y - 2) : (y + h - 2);
+        const lineY = totalsLine === "above" ? y - 2 : y + h - 2;
         doc.save();
         doc.lineWidth(0.6);
+        doc.strokeColor("#6b7280");
         doc.moveTo(X.debit + 6, lineY).lineTo(X.debit + col.debit - 2, lineY).stroke();
         doc.moveTo(X.credit + 6, lineY).lineTo(X.credit + col.credit - 2, lineY).stroke();
         doc.restore();
@@ -2854,25 +2936,34 @@ app.get("/ledger/:partyId/pdf", requireAdminOrSameCustomer, async (req, res) => 
       return y + h;
     }
 
-function drawFooter(pageNo) {
-  const footerText =
-    "This is a system generated ledger statement. As per Rule 46 of the Central Goods and Services Tax Rules, 2017 read with Section 16 of the Information Technology Act, 2000, no physical signature is required on a digitally issued document."
+    function drawFooter(pageNo) {
+      const footerText =
+        "This is a system generated ledger statement. No physical signature is required on digitally issued documents.";
 
-  doc.save();
-  doc.font("Helvetica").fontSize(7).fillColor("#475569");
+      doc.save();
+      doc.font("Helvetica").fontSize(7).fillColor("#64748b");
 
-  // ✅ wrap allowed + height calculate so it never spills to next page
-  const footerH = doc.heightOfString(footerText, { width: usableW - 60, align: "center" });
-  const footerY = doc.page.height - doc.page.margins.bottom - footerH - 6;
+      const footerH = doc.heightOfString(footerText, {
+        width: usableW - 70,
+        align: "center",
+      });
 
-  doc.text(footerText, left, footerY, { width: usableW - 60, align: "center" });
+      const footerY = doc.page.height - doc.page.margins.bottom - footerH - 8;
 
-  doc.fillColor("#94a3b8");
-  doc.text(`Page ${pageNo}`, left, footerY, { width: usableW, align: "right" });
+      doc.text(footerText, left, footerY, {
+        width: usableW - 70,
+        align: "center",
+      });
 
-  doc.restore();
-  doc.fillColor("#111827");
-}
+      doc.fillColor("#94a3b8");
+      doc.text(`Page ${pageNo}`, left, footerY, {
+        width: usableW,
+        align: "right",
+      });
+
+      doc.restore();
+      doc.fillColor("#111827");
+    }
 
     function bottomLimit() {
       return doc.page.height - bottom - 32;
@@ -2893,20 +2984,40 @@ function drawFooter(pageNo) {
     };
 
     if (y + rowHeight(openingRow.particulars) > bottomLimit()) {
-      drawFooter(pageNo); doc.addPage(); pageNo++; drawHeader(); y = drawTableHeader(doc.y);
+      drawFooter(pageNo);
+      doc.addPage();
+      pageNo++;
+      drawHeader();
+      y = drawTableHeader(doc.y);
     }
     y = drawRow(y, openingRow, { bold: true });
 
     for (const r of rows) {
       if (y + rowHeight(r.particulars) > bottomLimit()) {
-        drawFooter(pageNo); doc.addPage(); pageNo++; drawHeader(); y = drawTableHeader(doc.y);
+        drawFooter(pageNo);
+        doc.addPage();
+        pageNo++;
+        drawHeader();
+        y = drawTableHeader(doc.y);
       }
       y = drawRow(y, r);
     }
 
-    const subTotalRow = { date: "", particulars: "", vchType: "", vchNo: "", dr: totalDr, cr: totalCr };
+    const subTotalRow = {
+      date: "",
+      particulars: "",
+      vchType: "",
+      vchNo: "",
+      dr: totalDr,
+      cr: totalCr,
+    };
+
     if (y + rowHeight(" ") > bottomLimit()) {
-      drawFooter(pageNo); doc.addPage(); pageNo++; drawHeader(); y = drawTableHeader(doc.y);
+      drawFooter(pageNo);
+      doc.addPage();
+      pageNo++;
+      drawHeader();
+      y = drawTableHeader(doc.y);
     }
     y = drawRow(y, subTotalRow, { bold: true, totalsLine: "above" });
 
@@ -2921,14 +3032,30 @@ function drawFooter(pageNo) {
       };
 
       if (y + rowHeight(closingRow.particulars) > bottomLimit()) {
-        drawFooter(pageNo); doc.addPage(); pageNo++; drawHeader(); y = drawTableHeader(doc.y);
+        drawFooter(pageNo);
+        doc.addPage();
+        pageNo++;
+        drawHeader();
+        y = drawTableHeader(doc.y);
       }
       y = drawRow(y, closingRow, { bold: true, totalsLine: "below" });
     }
 
-    const grandRow = { date: "", particulars: "", vchType: "", vchNo: "", dr: grandTotal, cr: grandTotal };
+    const grandRow = {
+      date: "",
+      particulars: "",
+      vchType: "",
+      vchNo: "",
+      dr: grandTotal,
+      cr: grandTotal,
+    };
+
     if (y + rowHeight(" ") > bottomLimit()) {
-      drawFooter(pageNo); doc.addPage(); pageNo++; drawHeader(); y = drawTableHeader(doc.y);
+      drawFooter(pageNo);
+      doc.addPage();
+      pageNo++;
+      drawHeader();
+      y = drawTableHeader(doc.y);
     }
     y = drawRow(y, grandRow, { bold: true, totalsLine: "below" });
 
