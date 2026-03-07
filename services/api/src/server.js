@@ -580,13 +580,23 @@ function renderHTMLTemplate(html, vars = {}) {
 function formatDate(dateStr) {
   if (!dateStr) return "";
 
-  const d = new Date(dateStr);
+  const s = String(dateStr).trim();
 
-  return d.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric"
-  });
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [yy, mm, dd] = s.split("-");
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${dd}-${months[Number(mm) - 1]}-${yy}`;
+  }
+
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+
+  const dd = String(d.getDate()).padStart(2, "0");
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const mm = months[d.getMonth()];
+  const yy = d.getFullYear();
+
+  return `${dd}-${mm}-${yy}`;
 }
 function buildTxnEmailHTML(type, meta, party) {
   let template = "";
@@ -1963,42 +1973,110 @@ function receiptCodeFromFilename(originalName) {
 }
 
 function pickDate(type, lines, compact, originalName) {
-  // ✅ RECEIPT/PAYMENT often: "No. : 2 Dated : 2-Mar-26"
-  const mNoDated = compact.match(/\bDated\s*:\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})\b/i);
-  if (mNoDated?.[1]) {
-    const iso = parseDateLooseAny(mNoDated[1]);
-    if (iso) return iso;
-  }
+  const text = String(compact || "");
 
-  // ✅ EXTRA fallback: scan lines for first date token (Receipt bank line also has date)
-  for (const ln of lines) {
-    const m = String(ln).match(/\b(\d{1,2}-[A-Za-z]{3}-\d{2,4}|\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\b/);
-    if (m?.[1]) {
-      const iso = parseDateLooseAny(m[1]);
-      if (iso) return iso;
+  const toIso = (raw) => {
+    const iso = parseDateLooseAny(raw || "");
+    return iso || "";
+  };
+
+  const findByLabel = (...patterns) => {
+    for (const re of patterns) {
+      const m = text.match(re);
+      if (m?.[1]) {
+        const iso = toIso(m[1]);
+        if (iso) return iso;
+      }
     }
+    return "";
+  };
+
+  const findNearLine = (labelRegex, maxAhead = 5) => {
+    for (let i = 0; i < lines.length; i++) {
+      const line = String(lines[i] || "").trim();
+
+      if (labelRegex.test(line)) {
+        const same = line.match(/(\d{1,2}-[A-Za-z]{3}-\d{2,4}|\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/);
+        if (same?.[1]) {
+          const iso = toIso(same[1]);
+          if (iso) return iso;
+        }
+
+        for (let j = i + 1; j < Math.min(i + 1 + maxAhead, lines.length); j++) {
+          const next = String(lines[j] || "").trim();
+          const m = next.match(/(\d{1,2}-[A-Za-z]{3}-\d{2,4}|\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/);
+          if (m?.[1]) {
+            const iso = toIso(m[1]);
+            if (iso) return iso;
+          }
+        }
+      }
+    }
+    return "";
+  };
+
+  if (type === "PAYMENT") {
+    return (
+      findByLabel(
+        /\bPayment Advice\b[\s\S]{0,300}?\bDate\s*:\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})\b/i,
+        /\bPayment Advice\b[\s\S]{0,300}?\bDate\s*:\s*([0-9]{1,2}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{2,4})\b/i,
+        /\bDate\s*:\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})\b/i,
+        /\bDate\s*:\s*([0-9]{1,2}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{2,4})\b/i
+      ) ||
+      findNearLine(/^Date\s*:?$/i) ||
+      ""
+    );
   }
-if (type === "PAYMENT") {
-  // Payment Advice me usually "Date : dd-mm-yyyy" / or Dated
-  const mPay =
-    compact.match(/\bDate\s*:\s*([0-9]{1,2}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{2,4})/i)?.[1] ||
-    compact.match(/\bDated\s*:\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})\b/i)?.[1] ||
-    "";
 
-  return mPay ? (parseDateLooseAny(mPay) || "") : "";
+  if (type === "RECEIPT") {
+    return (
+      findByLabel(
+        /\bReceipt Voucher\b[\s\S]{0,200}?\bDated\s*:\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})\b/i,
+        /\bReceipt Voucher\b[\s\S]{0,200}?\bDated\s*:\s*([0-9]{1,2}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{2,4})\b/i,
+        /\bDated\s*:\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})\b/i
+      ) ||
+      findNearLine(/^Dated\s*:?$/i) ||
+      ""
+    );
+  }
+
+  if (type === "PURCHASE_RETURN" || type === "SALES_RETURN") {
+    return (
+      findByLabel(
+        /\bDated\s*:\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})\b/i,
+        /\bDated\s*:\s*([0-9]{1,2}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{2,4})\b/i
+      ) ||
+      findNearLine(/^Dated\s*:?$/i, 6) ||
+      ""
+    );
+  }
+
+  if (type === "SALE" || type === "PURCHASE") {
+    return (
+      findByLabel(
+        /\bDated\s*:\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})\b/i,
+        /\bDated\s*:\s*([0-9]{1,2}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{2,4})\b/i,
+        /\bInvoice Date\s*:\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})\b/i,
+        /\bInvoice Date\s*:\s*([0-9]{1,2}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{2,4})\b/i
+      ) ||
+      findNearLine(/^Dated\s*:?$/i, 6) ||
+      findNearLine(/^Invoice Date\s*:?$/i, 4) ||
+      ""
+    );
+  }
+
+  return (
+    findByLabel(
+      /\bDated\s*:\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})\b/i,
+      /\bDated\s*:\s*([0-9]{1,2}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{2,4})\b/i,
+      /\bDate\s*:\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})\b/i,
+      /\bDate\s*:\s*([0-9]{1,2}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{2,4})\b/i
+    ) ||
+    findNearLine(/^Dated\s*:?$/i, 6) ||
+    findNearLine(/^Date\s*:?$/i, 4) ||
+    ""
+  );
 }
-
-  // Dated ... (works for Sale/Purchase/Notes/Receipt) :contentReference[oaicite:13]{index=13} :contentReference[oaicite:14]{index=14} :contentReference[oaicite:15]{index=15} :contentReference[oaicite:16]{index=16} :contentReference[oaicite:17]{index=17}
-  const m = compact.match(/\bDated\s*:?\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4}|[0-9]{1,2}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{2,4})/i);
-  if (m?.[1]) return parseDateLooseAny(m[1]) || "";
-
-  // Receipt Voucher: "... Dated : 2-May-25" sometimes in one line
-  const m2 = compact.match(/\bDated\s*:\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{2,4})/i);
-  if (m2?.[1]) return parseDateLooseAny(m2[1]) || "";
-
-  return "";
-}
-
 function stripTrailingAmount(s) {
   return String(s || "")
     .replace(/\s+\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s*$/g, "")
