@@ -22,7 +22,7 @@ const COLORS = {
   PURCHASE: "#7c3aed",
   PAYMENT: "#ef4444",
   PURCHASE_RETURN: "#0ea5e9",
-  YELLOW_NEG: "#facc15", // negative slice
+  YELLOW_NEG: "#facc15",
 };
 
 export default function Home() {
@@ -37,7 +37,6 @@ export default function Home() {
       .catch((e) => setErr(e.message || "Failed"));
   }, []);
 
-  // ✅ Compute Journal DR/CR from transactions (robust)
   useEffect(() => {
     let alive = true;
 
@@ -45,16 +44,15 @@ export default function Home() {
       try {
         let res;
 
-        // ✅ try multiple signatures (because api.transactions sometimes needs/no-need param)
         try {
           res = await api.transactions("");
-        } catch (e1) {
+        } catch {
           try {
             res = await api.transactions();
-          } catch (e2) {
+          } catch {
             try {
               res = await api.transactions({});
-            } catch (e3) {
+            } catch {
               res = null;
             }
           }
@@ -89,7 +87,6 @@ export default function Home() {
 
           if (type !== "JOURNAL") continue;
 
-          // ✅ most common debit/credit field possibilities
           const debit = toNum(
             r?.debit ??
               r?.dr ??
@@ -99,6 +96,7 @@ export default function Home() {
               r?.Dr ??
               r?.DR
           );
+
           const credit = toNum(
             r?.credit ??
               r?.cr ??
@@ -115,7 +113,6 @@ export default function Home() {
             continue;
           }
 
-          // ✅ fallback: amount + side
           const amt = toNum(r?.amount ?? r?.net ?? r?.value ?? r?.amt);
           const side = String(
             r?.side ?? r?.dc ?? r?.drcr ?? r?.DrCr ?? r?.dcFlag ?? ""
@@ -128,8 +125,8 @@ export default function Home() {
         }
 
         if (alive) setJournalSplit({ dr, cr });
-      } catch (e) {
-        // ignore silently
+      } catch {
+        // ignore
       }
     })();
 
@@ -138,19 +135,14 @@ export default function Home() {
     };
   }, []);
 
-  // ✅ KEEP ALL HOOKS ABOVE RETURNS (rules-of-hooks fix)
   const baseOutstanding = Number(data?.summary?.outstanding ?? 0);
 
-  // ✅ ratios for splitting JOURNAL between CR (sales) and DR (purchase) (ONLY for area chart)
   const journalRatios = useMemo(() => {
     const dr = Number(journalSplit.dr || 0);
     const cr = Number(journalSplit.cr || 0);
     const t = dr + cr;
 
-    // IMPORTANT: if only DR exists => crRatio=0, drRatio=1 (no 50/50 split)
     if (t > 0) return { drRatio: dr / t, crRatio: cr / t };
-
-    // fallback if truly nothing
     return { drRatio: 0, crRatio: 0 };
   }, [journalSplit]);
 
@@ -170,7 +162,6 @@ export default function Home() {
     });
   }, [data, journalRatios]);
 
-  // ✅ KPI totals (including Journal DR/CR)
   const kpiTotals = useMemo(() => {
     const s = data?.summary || {};
     const byType =
@@ -191,7 +182,6 @@ export default function Home() {
     const sumKey = (arr, key) =>
       (arr || []).reduce((acc, r) => acc + Number(r?.[key] || 0), 0);
 
-    // fallback totals from charts (if backend not providing)
     const saleSum = sumKey(salesTrend, "SALE");
     const receiptSum = sumKey(salesTrend, "RECEIPT");
     const salesReturnSum = sumKey(salesTrend, "SALES_RETURN");
@@ -216,7 +206,6 @@ export default function Home() {
         s.salesReturn,
         salesReturnSum
       ),
-
       purchase: pick(
         byType.PURCHASE,
         byType.purchase,
@@ -238,8 +227,6 @@ export default function Home() {
         s.purchaseReturn,
         purchaseReturnSum
       ),
-
-      // ✅ BEST: backend split OR frontend computed split
       journalDr: pick(
         s.totalJournalDr,
         s.journalDr,
@@ -257,11 +244,9 @@ export default function Home() {
     };
   }, [data, salesTrend, purchaseTrend, journalSplit]);
 
-  // ✅ Outstanding (as-is from backend). If you want net-adjust later, we can.
   const outstanding = baseOutstanding;
   const osIsRed = outstanding > 0;
 
-  // ✅ NEW PIE LOGIC (Voucher-wise)
   const salesPieData = useMemo(() => {
     return buildVoucherPie(
       [
@@ -301,30 +286,43 @@ export default function Home() {
     return items.filter((x) => Math.abs(Number(x.value || 0)) > 0);
   }, [kpiTotals]);
 
-  if (err)
+  if (err) {
     return <div className="card p-5 text-sm text-red-700">Error: {err}</div>;
-  if (!data)
+  }
+
+  if (!data) {
     return (
-      <div className="card p-5 text-sm text-slate-500">Loading dashboard...</div>
+      <div className="card p-5 text-sm text-slate-500">
+        Loading dashboard...
+      </div>
     );
+  }
 
   return (
     <div className="space-y-6">
-      {/* OVERVIEW */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="card p-5"
+        className="card p-5 sm:p-6 overflow-hidden relative"
       >
-        <div className="flex items-start justify-between gap-3">
+        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(700px_180px_at_12%_0%,rgba(255,45,85,0.06),transparent_55%),radial-gradient(760px_220px_at_95%_0%,rgba(37,99,235,0.05),transparent_60%)]" />
+
+        <div className="relative flex items-start justify-between gap-3">
           <div>
-            <div className="text-lg font-semibold">Overview</div>
-            <div className="text-sm text-slate-500">Your latest account insights</div>
+            <div className="text-lg sm:text-xl font-extrabold star-animated-gradient-text">
+              Overview
+            </div>
+            <div className="text-sm text-slate-500 mt-1">
+              Your latest account insights
+            </div>
           </div>
+
+          <span className="hidden sm:inline-flex rounded-full border border-fuchsia-100 bg-fuchsia-50 px-3 py-1 text-[11px] font-bold text-fuchsia-700">
+            Dashboard
+          </span>
         </div>
 
-        {/* KPI GRID */}
-        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="relative mt-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <Kpi
             title="Outstanding"
             value={outstanding}
@@ -337,38 +335,44 @@ export default function Home() {
             <Kpi key={k.title} title={k.title} value={k.value} hint={k.hint} />
           ))}
 
-          <Kpi title="Transactions" value={data.summary?.txnCount ?? 0} hint="All time" />
+          <Kpi
+            title="Transactions"
+            value={data.summary?.txnCount ?? 0}
+            hint="All time"
+          />
         </div>
       </motion.div>
 
-      {/* LEFT: GRAPHS | RIGHT: PIE */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* LEFT: GRAPHS */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className="space-y-6">
-          {/* SALES GROUP */}
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="card p-5"
+            className="card p-5 sm:p-6"
           >
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start justify-between gap-3 flex-col sm:flex-row">
               <div>
-                <div className="text-sm font-semibold">Sales Group</div>
-                <div className="text-xs text-slate-500">
-                  SALE • RECEIPT • SALES_RETURN
+                <div className="text-sm sm:text-base font-bold text-slate-900">
+                  Sales Group
+                </div>
+                <div className="text-xs text-slate-500 mt-1">
+                  SALE • RECEIPT • SALES RETURN
                 </div>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-slate-500">
+
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
                 <LegendDot label="Sale" color={COLORS.SALE} />
                 <LegendDot label="Receipt" color={COLORS.RECEIPT} />
                 <LegendDot label="Sales Return" color={COLORS.SALES_RETURN} />
-
               </div>
             </div>
 
             <div className="mt-4 h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={salesTrend} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
+                <AreaChart
+                  data={salesTrend}
+                  margin={{ top: 10, right: 10, bottom: 0, left: 0 }}
+                >
                   <defs>
                     <linearGradient id="gSale" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor={COLORS.SALE} stopOpacity={0.35} />
@@ -382,46 +386,77 @@ export default function Home() {
                       <stop offset="5%" stopColor={COLORS.SALES_RETURN} stopOpacity={0.35} />
                       <stop offset="95%" stopColor={COLORS.SALES_RETURN} stopOpacity={0.02} />
                     </linearGradient>
-
                   </defs>
 
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" tickMargin={8} tick={{ fontSize: 12 }} />
-                  <YAxis tickMargin={8} tick={{ fontSize: 12 }} tickFormatter={fmtCompactINR} />
+                  <YAxis
+                    tickMargin={8}
+                    tick={{ fontSize: 12 }}
+                    tickFormatter={fmtCompactINR}
+                  />
                   <Tooltip content={<ProTooltip />} />
 
-                  <Area type="monotone" dataKey="SALE" stroke={COLORS.SALE} fill="url(#gSale)" strokeWidth={2.4} dot={false} isAnimationActive />
-                  <Area type="monotone" dataKey="RECEIPT" stroke={COLORS.RECEIPT} fill="url(#gReceipt)" strokeWidth={2.4} dot={false} isAnimationActive />
-                  <Area type="monotone" dataKey="SALES_RETURN" stroke={COLORS.SALES_RETURN} fill="url(#gSalesReturn)" strokeWidth={2.4} dot={false} isAnimationActive />
-                  
+                  <Area
+                    type="monotone"
+                    dataKey="SALE"
+                    stroke={COLORS.SALE}
+                    fill="url(#gSale)"
+                    strokeWidth={2.4}
+                    dot={false}
+                    isAnimationActive
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="RECEIPT"
+                    stroke={COLORS.RECEIPT}
+                    fill="url(#gReceipt)"
+                    strokeWidth={2.4}
+                    dot={false}
+                    isAnimationActive
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="SALES_RETURN"
+                    stroke={COLORS.SALES_RETURN}
+                    fill="url(#gSalesReturn)"
+                    strokeWidth={2.4}
+                    dot={false}
+                    isAnimationActive
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </motion.div>
 
-          {/* PURCHASE GROUP */}
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="card p-5"
+            className="card p-5 sm:p-6"
           >
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start justify-between gap-3 flex-col sm:flex-row">
               <div>
-                <div className="text-sm font-semibold">Purchase Group</div>
-                <div className="text-xs text-slate-500">
-                  PURCHASE • PAYMENT • PURCHASE_RETURN
+                <div className="text-sm sm:text-base font-bold text-slate-900">
+                  Purchase Group
+                </div>
+                <div className="text-xs text-slate-500 mt-1">
+                  PURCHASE • PAYMENT • PURCHASE RETURN
                 </div>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-slate-500">
+
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
                 <LegendDot label="Purchase" color={COLORS.PURCHASE} />
                 <LegendDot label="Payment" color={COLORS.PAYMENT} />
-                <LegendDot label="Purchase_Return" color={COLORS.PURCHASE_RETURN} />
+                <LegendDot label="Purchase Return" color={COLORS.PURCHASE_RETURN} />
               </div>
             </div>
 
             <div className="mt-4 h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={purchaseTrend} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
+                <AreaChart
+                  data={purchaseTrend}
+                  margin={{ top: 10, right: 10, bottom: 0, left: 0 }}
+                >
                   <defs>
                     <linearGradient id="gPurchase" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor={COLORS.PURCHASE} stopOpacity={0.35} />
@@ -439,29 +474,59 @@ export default function Home() {
 
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" tickMargin={8} tick={{ fontSize: 12 }} />
-                  <YAxis tickMargin={8} tick={{ fontSize: 12 }} tickFormatter={fmtCompactINR} />
+                  <YAxis
+                    tickMargin={8}
+                    tick={{ fontSize: 12 }}
+                    tickFormatter={fmtCompactINR}
+                  />
                   <Tooltip content={<ProTooltip />} />
 
-                  <Area type="monotone" dataKey="PURCHASE" stroke={COLORS.PURCHASE} fill="url(#gPurchase)" strokeWidth={2.4} dot={false} isAnimationActive />
-                  <Area type="monotone" dataKey="PAYMENT" stroke={COLORS.PAYMENT} fill="url(#gPayment)" strokeWidth={2.4} dot={false} isAnimationActive />
-                  <Area type="monotone" dataKey="PURCHASE_RETURN" stroke={COLORS.PURCHASE_RETURN} fill="url(#gPurchaseReturn)" strokeWidth={2.4} dot={false} isAnimationActive />
+                  <Area
+                    type="monotone"
+                    dataKey="PURCHASE"
+                    stroke={COLORS.PURCHASE}
+                    fill="url(#gPurchase)"
+                    strokeWidth={2.4}
+                    dot={false}
+                    isAnimationActive
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="PAYMENT"
+                    stroke={COLORS.PAYMENT}
+                    fill="url(#gPayment)"
+                    strokeWidth={2.4}
+                    dot={false}
+                    isAnimationActive
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="PURCHASE_RETURN"
+                    stroke={COLORS.PURCHASE_RETURN}
+                    fill="url(#gPurchaseReturn)"
+                    strokeWidth={2.4}
+                    dot={false}
+                    isAnimationActive
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </motion.div>
         </div>
 
-        {/* RIGHT: PIE */}
         <div className="space-y-6">
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="card p-5"
+            className="card p-5 sm:p-6"
           >
-            <div className="text-sm font-semibold">Sales Split</div>
-            <div className="text-xs text-slate-500 mb-3">
+            <div className="text-sm sm:text-base font-bold text-slate-900">
+              Sales Split
+            </div>
+            <div className="text-xs text-slate-500 mb-3 mt-1">
               SALE • RECEIPT • SALES RETURN
             </div>
+
             <div className="h-80 flex items-center justify-center">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -486,12 +551,15 @@ export default function Home() {
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="card p-5"
+            className="card p-5 sm:p-6"
           >
-            <div className="text-sm font-semibold">Purchase Split</div>
-            <div className="text-xs text-slate-500 mb-3">
+            <div className="text-sm sm:text-base font-bold text-slate-900">
+              Purchase Split
+            </div>
+            <div className="text-xs text-slate-500 mb-3 mt-1">
               PURCHASE • PAYMENT • PURCHASE RETURN
             </div>
+
             <div className="h-80 flex items-center justify-center">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -551,7 +619,7 @@ function prettyKey(k) {
 
 function LegendDot({ label, color }) {
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className="inline-flex items-center gap-1.5">
       <span
         style={{
           width: 8,
@@ -629,11 +697,6 @@ function ProTooltip({ active, payload, label }) {
   );
 }
 
-/**
- * ✅ Voucher-wise pie builder
- * - negative values => yellow slice (value uses abs)
- * - total percent based on abs sum
- */
 function buildVoucherPie(items, COLORS) {
   const clean = (items || [])
     .map((x) => {
@@ -660,8 +723,6 @@ function buildVoucherPie(items, COLORS) {
 function sliceColor(d) {
   const C = d?.__COLORS || COLORS;
   if (d?.neg) return C.YELLOW_NEG;
-
-  // map keys to colors
   if (d?.key === "SALE") return C.SALE;
   if (d?.key === "RECEIPT") return C.RECEIPT;
   if (d?.key === "SALES_RETURN") return C.SALES_RETURN;
@@ -670,11 +731,9 @@ function sliceColor(d) {
   if (d?.key === "PURCHASE_RETURN") return C.PURCHASE_RETURN;
   if (d?.key === "JOURNAL_CR") return C.JOURNAL;
   if (d?.key === "JOURNAL_DR") return C.JOURNAL;
-
   return C.JOURNAL;
 }
 
-/* ✅ keeping your old buildPie (not deleting) */
 function buildPie(p) {
   if (!p) return [];
   const net = Number(p.net || 0);
@@ -698,9 +757,11 @@ function buildPie(p) {
 
 function Kpi({ title, value, hint, className = "", valueClassName = "" }) {
   return (
-    <div className={`rounded-2xl border border-slate-100 bg-white p-4 ${className}`}>
-      <div className="text-xs text-slate-500">{title}</div>
-      <div className={`text-xl font-semibold mt-1 ${valueClassName}`}>
+    <div
+      className={`rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)] ${className}`}
+    >
+      <div className="text-xs font-medium text-slate-500">{title}</div>
+      <div className={`text-xl font-bold mt-1 ${valueClassName}`}>
         {Number(value).toLocaleString("en-IN")}
       </div>
       <div className="text-xs text-slate-400 mt-1">{hint}</div>
@@ -714,10 +775,8 @@ function PctTooltip({ active, payload }) {
   const item = payload[0];
   const name = item?.name || item?.payload?.name || "";
   const val = Number(item?.value || 0);
-
   const total = Number(item?.payload?.__total || 0);
   const pct = total ? (val / total) * 100 : 0;
-
   const neg = Boolean(item?.payload?.neg);
 
   return (

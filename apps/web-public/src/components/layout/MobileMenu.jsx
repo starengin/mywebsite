@@ -23,7 +23,7 @@ export default function MobileMenu({ open, onClose }) {
     <div className="mmOverlay" onClick={onClose}>
       <div className="mmDrawer" onClick={(e) => e.stopPropagation()}>
         <div className="mmTop">
-          <div className="brandText gradText">STAR ENGINEERING</div>
+          <div className="brandText gradText">SERVICE INDIA</div>
           <button className="mmClose" onClick={onClose}>✕</button>
         </div>
 

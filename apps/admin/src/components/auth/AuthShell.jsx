@@ -2,7 +2,12 @@ import React from "react";
 import { motion } from "framer-motion";
 import "../../styles/admin-auth.css";
 
-export default function AuthShell({ title, subtitle, badge = "Admin", children }) {
+export default function AuthShell({
+  title,
+  subtitle,
+  badge = "Admin",
+  children,
+}) {
   return (
     <div className="star-auth">
       <div className="wrap">
@@ -13,7 +18,14 @@ export default function AuthShell({ title, subtitle, badge = "Admin", children }
           transition={{ duration: 0.35 }}
         >
           <div className="brand">
-            <div className="logo" />
+            <div className="logoWrap">
+              <img
+                src="https://www.stareng.co.in/brand/logo.jpg"
+                alt="STAR Engineering"
+                className="logoImg"
+              />
+            </div>
+
             <div>
               <h1>STAR Engineering</h1>
               <p>Admin Portal</p>
@@ -21,15 +33,18 @@ export default function AuthShell({ title, subtitle, badge = "Admin", children }
           </div>
 
           <h2>Secure access, clean workflow.</h2>
+
           <p className="lead">
-            Login with OTP, manage customers, transactions, ledger and PDFs — fast, responsive and device-friendly UI.
+            Manage customers, transactions, ledger, PDFs and email workflows
+            from one premium admin panel with a fast and responsive interface.
           </p>
 
           <div className="chips">
-            <span className="chip">OTP Login</span>
+            <span className="chip">Secure Login</span>
+            <span className="chip">Customer Control</span>
             <span className="chip">Ledger Ready</span>
-            <span className="chip">PDF Reports</span>
-            <span className="chip">Prisma + SQLite</span>
+            <span className="chip">PDF Workflow</span>
+            <span className="chip">Email Center</span>
           </div>
         </motion.aside>
 
@@ -41,9 +56,12 @@ export default function AuthShell({ title, subtitle, badge = "Admin", children }
         >
           <div className="panelHead">
             <div>
-              <p className="title" style={{ margin: 0 }}>{title}</p>
+              <p className="title" style={{ margin: 0 }}>
+                {title}
+              </p>
               <p className="sub">{subtitle}</p>
             </div>
+
             <span className="badge">{badge}</span>
           </div>
 

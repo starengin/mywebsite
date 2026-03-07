@@ -4,6 +4,11 @@ import { api } from "../lib/api.js";
 import { getToken } from "../lib/auth.js";
 import AttachmentMenu from "../components/ui/AttachmentMenu";
 
+const pageAnim = {
+  hidden: { opacity: 0, y: 10 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.3 } },
+};
+
 export default function Ledger() {
   const [openAttachId, setOpenAttachId] = useState("");
   const [customers, setCustomers] = useState([]);
@@ -17,13 +22,23 @@ export default function Ledger() {
   const [loading, setLoading] = useState(true);
   const [dateErr, setDateErr] = useState("");
 
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth <= 768 : false
+  );
+
   const [from, setFrom] = useState(() => {
     const d = new Date(Date.now() - 30 * 86400000);
     return d.toISOString().slice(0, 10);
   });
+
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
 
-  // dd-MMM-yyyy
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   function fmtDateISO(iso) {
     if (!iso) return "-";
     const d = new Date(`${String(iso).slice(0, 10)}T00:00:00`);
@@ -36,6 +51,7 @@ export default function Ledger() {
 
   function clampRange(nextFrom, nextTo) {
     if (!nextFrom || !nextTo) return { from: nextFrom, to: nextTo, err: "" };
+
     if (nextFrom > nextTo) {
       return {
         from: nextFrom,
@@ -43,6 +59,7 @@ export default function Ledger() {
         err: "To date cannot be earlier than From date.",
       };
     }
+
     return { from: nextFrom, to: nextTo, err: "" };
   }
 
@@ -52,6 +69,7 @@ export default function Ledger() {
     setTo(out.to);
     setDateErr(out.err);
   }
+
   function onChangeTo(val) {
     const out = clampRange(from, val);
     setFrom(out.from);
@@ -59,16 +77,22 @@ export default function Ledger() {
     setDateErr(out.err);
   }
 
-  // load customers once
   useEffect(() => {
     (async () => {
       try {
         const list = await api.customers();
         const arr = Array.isArray(list) ? list : list?.items || [];
         setCustomers(arr);
-        if (arr.length && !partyId) setPartyId(String(arr[0].id));
+
+        if (arr.length && !partyId) {
+          setPartyId(String(arr[0].id));
+        }
       } catch (e) {
-        setErr(e?.response?.data?.message || e?.message || "Failed to load customers");
+        setErr(
+          e?.response?.data?.message ||
+            e?.message ||
+            "Failed to load customers"
+        );
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -89,9 +113,12 @@ export default function Ledger() {
       const r = await api.adminLedger(partyId, from, to);
 
       const items = Array.isArray(r?.rows) ? r.rows : [];
+
       const sorted = items
         .slice()
-        .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+        .sort((a, b) =>
+          String(a.date || "").localeCompare(String(b.date || ""))
+        );
 
       setRows(sorted);
       setOpening(Number(r?.opening || 0));
@@ -103,7 +130,6 @@ export default function Ledger() {
         e?.message ||
         "Failed";
 
-      // ✅ if 401, show better hint
       if (String(e?.response?.status) === "401") {
         setErr(`${msg} (401) — Token missing/expired. Please login again.`);
       } else {
@@ -125,14 +151,17 @@ export default function Ledger() {
 
   const onExport = () => {
     const token = getToken();
+
     if (!token) {
       setErr("Session expired. Please login again.");
       return;
     }
+
     if (!partyId) {
       setErr("Please select a party.");
       return;
     }
+
     const url = api.exportAdminLedgerPdf(partyId, from, to, token);
     window.open(url, "_blank", "noopener,noreferrer");
   };
@@ -142,7 +171,6 @@ export default function Ledger() {
     return c?.name || c?.companyName || c?.partyName || "";
   }, [customers, partyId]);
 
-  // ✅ Always show opening + closing rows (and keep same schema as server rows)
   const tableRows = useMemo(() => {
     if (loading) return [];
 
@@ -155,7 +183,6 @@ export default function Ledger() {
       particulars: opening >= 0 ? "To Opening Balance" : "By Opening Balance",
       dr: opening > 0 ? opening : 0,
       cr: opening < 0 ? Math.abs(opening) : 0,
-      runningBalance: opening,
       pdfs: [],
     };
 
@@ -168,7 +195,6 @@ export default function Ledger() {
       particulars: closing >= 0 ? "By Closing Balance" : "To Closing Balance",
       dr: closing < 0 ? Math.abs(closing) : 0,
       cr: closing > 0 ? closing : 0,
-      runningBalance: closing,
       pdfs: [],
     };
 
@@ -177,39 +203,47 @@ export default function Ledger() {
   }, [rows, from, to, opening, closing, loading]);
 
   return (
-    <div className="space-y-4">
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="card p-5"
-      >
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+    <motion.div variants={pageAnim} initial="hidden" animate="show" style={S.page}>
+      <div style={S.bgGlow1} />
+      <div style={S.bgGlow2} />
+      <div style={S.bgGlow3} />
+
+      <div style={S.wrap}>
+        <div style={S.hero}>
+          <div style={S.heroShine} />
+
+          <div style={S.heroTop}>
             <div>
-              <div className="text-lg font-semibold">Ledger</div>
-              <div className="text-sm text-slate-500">
-                Party-wise ledger (Old → New).
+              <div style={S.kicker}>STAR ENGINEERING</div>
+              <div style={S.h1}>Ledger</div>
+              <div style={S.sub}>
+                Party-wise ledger with opening balance, closing balance and
+                attachment access.
               </div>
 
-              <div className="mt-2 flex gap-2 flex-wrap text-xs text-slate-600">
-                <span className="px-2 py-1 rounded-full bg-slate-100">
-                  Opening: <b>{fmt(opening)}</b>
+              <div style={S.badges}>
+                <span style={S.badge}>
+                  Opening <b>{fmt(opening)}</b>
                 </span>
-                <span className="px-2 py-1 rounded-full bg-slate-100">
-                  Closing: <b>{fmt(closing)}</b>
+                <span style={S.badge}>
+                  Closing <b>{fmt(closing)}</b>
                 </span>
               </div>
             </div>
 
-            <div className="flex flex-col sm:items-end gap-2">
-             <div className="ledgerFilters">
-  {/* Party */}
-  <div className="fieldRow fieldRow--party">
-    <div className="fieldLabel">Party</div>
+            <div
+              style={{
+                ...S.filtersWrap,
+                width: isMobile ? "100%" : "auto",
+              }}
+            >
+              <div style={S.filters}>
+  <div style={S.filterFieldParty}>
+    <div style={S.filterLabel}>Party</div>
     <select
       value={partyId}
       onChange={(e) => setPartyId(e.target.value)}
-      className="fieldControl"
+      style={S.input}
     >
       {customers.length ? null : <option value="">No customers</option>}
       {customers.map((c) => (
@@ -220,135 +254,493 @@ export default function Ledger() {
     </select>
   </div>
 
-  {/* Dates */}
-  <div className="fieldRow fieldRow--dates">
-    <div className="fieldLabel">From</div>
-    <input
-      type="date"
-      value={from}
-      onChange={(e) => onChangeFrom(e.target.value)}   // ✅ use clamp
-      className="fieldControl"
-    />
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: isMobile ? "1fr" : "repeat(3, auto) 1fr",
+      gap: 10,
+      alignItems: "end",
+    }}
+  >
+    <div style={S.filterFieldDate}>
+      <div style={S.filterLabel}>From</div>
+      <input
+        type="date"
+        value={from}
+        onChange={(e) => onChangeFrom(e.target.value)}
+        style={S.input}
+      />
+    </div>
 
-    <div className="fieldLabel">To</div>
-    <input
-      type="date"
-      value={to}
-      onChange={(e) => onChangeTo(e.target.value)}     // ✅ use clamp
-      className="fieldControl"
-    />
-  </div>
+    <div style={S.filterFieldDate}>
+      <div style={S.filterLabel}>To</div>
+      <input
+        type="date"
+        value={to}
+        onChange={(e) => onChangeTo(e.target.value)}
+        style={S.input}
+      />
+    </div>
 
-  {/* Buttons */}
-  <div className="fieldActions">
-    <button className="btn-ghost" onClick={load}>
-      {loading ? "Refreshing..." : "Refresh"}
-    </button>
-    <button className="btn-gradient" onClick={onExport}>
-      Export PDF
-    </button>
+    <div style={S.actions}>
+      <button style={S.secondary} onClick={load}>
+        {loading ? "Refreshing..." : "Refresh"}
+      </button>
+      <button style={S.primary} onClick={onExport}>
+        Export PDF
+      </button>
+    </div>
   </div>
 </div>
+
+              {partyName ? (
+                <div style={S.selectedLine}>
+                  Selected: <b>{partyName}</b>
+                </div>
+              ) : null}
+
+              {dateErr ? <div style={S.dateErr}>{dateErr}</div> : null}
+            </div>
+          </div>
+        </div>
+
+        {err ? <div style={S.err}>{err}</div> : null}
+
+        <div style={S.card}>
+          <div style={S.cardHead}>
+            <div>
+              <div style={S.cardTitle}>Ledger Entries</div>
+              <div style={S.muted}>
+                {loading ? "Loading..." : `${tableRows.length} row(s)`}
+              </div>
             </div>
           </div>
 
-          {partyName ? (
-            <div className="text-xs text-slate-500">
-              Selected: <b className="text-slate-700">{partyName}</b>
-            </div>
-          ) : null}
-        </div>
-      </motion.div>
-
-      {err ? <div className="card p-5 text-sm text-red-700">Error: {err}</div> : null}
-
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: "easeOut" }}
-        className="card p-5"
-      >
-        <div className="table-wrap">
-          <table className="table">
-            <thead className="bg-slate-50 border-b">
-              <tr className="text-left text-xs text-slate-500">
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Voucher</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Narration</th>
-                <th className="t-right">Debit</th>
-                <th className="px-4 py-3 text-right">Credit</th>
-                <th className="px-4 py-3 text-right">Balance</th>
-                <th className="px-4 py-3 text-right">Attachment</th>
-              </tr>
-            </thead>
-
-            <tbody className="text-sm">
-              {loading ? (
+          <div style={S.tableWrap}>
+            <table style={S.table}>
+              <thead>
                 <tr>
-                  <td className="px-4 py-6 text-slate-500" colSpan={8}>
-                    Loading...
-                  </td>
+                  <th style={S.th}>Date</th>
+                  <th style={S.th}>Voucher</th>
+                  <th style={S.th}>Type</th>
+                  <th style={S.th}>Narration</th>
+                  <th style={{ ...S.th, textAlign: "right" }}>Debit</th>
+                  <th style={{ ...S.th, textAlign: "right" }}>Credit</th>
+                  
+                  <th style={{ ...S.th, textAlign: "right" }}>Attachment</th>
                 </tr>
-              ) : (
-                tableRows.map((r) => (
-                  <tr
-                    key={r.id || `${r.date}-${r.voucherNo}-${r.particulars}`}
-                    className={
-                      r.__type === "OPENING" || r.__type === "CLOSING"
-                        ? "border-b bg-slate-50 font-semibold"
-                        : "border-b last:border-b-0 hover:bg-slate-50/60"
-                    }
-                  >
-                    <td className="px-4 py-3">{fmtDateISO(r.date)}</td>
-                    <td className="px-4 py-3 font-medium">{r.voucherNo || "-"}</td>
-                    <td className="px-4 py-3">{r.voucherType || "-"}</td>
-                    <td className="px-4 py-3 max-w-[420px] truncate" title={r.particulars || ""}>
-                      {r.particulars || "-"}
-                    </td>
+              </thead>
 
-                    <td className="t-right">{fmtBlank(r.dr)}</td>
-                    <td className="px-4 py-3 text-right">{fmtBlank(r.cr)}</td>
-                    <td className="px-4 py-3 text-right font-semibold">
-                      {fmtBlank(r.runningBalance)}
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td style={S.tdCenter} colSpan={8}>
+                      Loading...
                     </td>
-
-                    <td className="px-4 py-3 text-right">
-  {r.__type === "OPENING" || r.__type === "CLOSING" ? (
-    <span className="text-xs text-slate-400">—</span>
-  ) : (
-    <AttachmentMenu
-      pdfs={r.pdfs || []}
-      rowId={String(r.id || `${r.date}-${r.voucherNo}`)}
-      openId={openAttachId}
-      setOpenId={setOpenAttachId}
-      makeUrl={(p, idx, token) => {
-        const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
-        const u = p.url || "";
-        return `${base}${u}${u.includes("?") ? "&" : "?"}token=${encodeURIComponent(token || "")}`;
-      }}
-    />
-  )}
-</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </motion.div>
+                ) : (
+                  tableRows.map((r) => (
+                    <tr
+                      key={r.id || `${r.date}-${r.voucherNo}-${r.particulars}`}
+                      style={r.__type ? S.specialRow : undefined}
+                    >
+                      <td style={S.td}>{fmtDateISO(r.date)}</td>
+                      <td style={S.td}>{r.voucherNo || "-"}</td>
+                      <td style={S.td}>{r.voucherType || "-"}</td>
+                      <td style={S.tdNarr} title={r.particulars || ""}>
+                        {r.particulars || "-"}
+                      </td>
+                      <td style={{ ...S.td, textAlign: "right" }}>
+                        {fmtBlank(r.dr)}
+                      </td>
+                      <td style={{ ...S.td, textAlign: "right" }}>
+                        {fmtBlank(r.cr)}
+                      </td>
 
-      <div className="text-xs text-slate-500 text-center">
-        STAR Admin • Ledger export uses token protected PDFs.
+                      <td style={{ ...S.td, textAlign: "right" }}>
+                        {r.__type === "OPENING" || r.__type === "CLOSING" ? (
+                          <span style={S.noAttach}>—</span>
+                        ) : (
+                          <AttachmentMenu
+                            pdfs={r.pdfs || []}
+                            rowId={String(r.id || `${r.date}-${r.voucherNo}`)}
+                            openId={openAttachId}
+                            setOpenId={setOpenAttachId}
+                            makeUrl={(p, idx, token) => {
+                              const base =
+                                import.meta.env.VITE_API_URL || "http://localhost:5000";
+                              const u = p.url || "";
+                              return `${base}${u}${
+                                u.includes("?") ? "&" : "?"
+                              }token=${encodeURIComponent(token || "")}`;
+                            }}
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style={S.footerNote}>
+          STAR Admin • Ledger export uses token-protected PDFs.
+        </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
+
+const S = {
+  page: {
+    position: "relative",
+    overflow: "hidden",
+    padding: 14,
+    fontFamily: "Arial, Helvetica, sans-serif",
+  },
+
+  wrap: {
+    maxWidth: 1300,
+    margin: "0 auto",
+    position: "relative",
+    zIndex: 2,
+  },
+
+  bgGlow1: {
+    position: "absolute",
+    top: -80,
+    left: -80,
+    width: 260,
+    height: 260,
+    borderRadius: "50%",
+    background: "rgba(255,0,102,0.08)",
+    filter: "blur(70px)",
+    pointerEvents: "none",
+  },
+
+  bgGlow2: {
+    position: "absolute",
+    top: 140,
+    right: -80,
+    width: 260,
+    height: 260,
+    borderRadius: "50%",
+    background: "rgba(0,102,255,0.08)",
+    filter: "blur(80px)",
+    pointerEvents: "none",
+  },
+
+  bgGlow3: {
+    position: "absolute",
+    bottom: -120,
+    left: "25%",
+    width: 320,
+    height: 320,
+    borderRadius: "50%",
+    background: "rgba(255,170,0,0.08)",
+    filter: "blur(95px)",
+    pointerEvents: "none",
+  },
+
+  hero: {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 14,
+    background:
+      "radial-gradient(900px 260px at 12% 0%, rgba(255,170,0,0.10), transparent 60%)," +
+      "radial-gradient(820px 240px at 88% 0%, rgba(163,0,255,0.08), transparent 60%)," +
+      "radial-gradient(760px 220px at 100% 100%, rgba(0,102,255,0.06), transparent 60%)," +
+      "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.90))",
+    color: "#111827",
+    border: "1px solid rgba(255,232,190,0.42)",
+    boxShadow:
+      "0 18px 40px rgba(17,24,39,0.08), 0 8px 18px rgba(17,24,39,0.05)",
+  },
+
+  heroShine: {
+    height: 4,
+    borderRadius: 999,
+    marginBottom: 16,
+    background:
+      "linear-gradient(90deg, rgba(161,0,255,0.10), rgba(255,122,0,0.22), rgba(0,102,255,0.10))",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+  },
+
+  heroTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 16,
+    flexWrap: "wrap",
+  },
+
+  kicker: {
+    fontSize: 11,
+    fontWeight: 900,
+    letterSpacing: 1.2,
+    color: "#7a0000",
+    marginBottom: 8,
+  },
+
+  h1: {
+    fontSize: "clamp(24px, 3vw, 30px)",
+    fontWeight: 900,
+    lineHeight: 1.06,
+    color: "#111827",
+  },
+
+  sub: {
+    fontSize: 14,
+    color: "#475569",
+    fontWeight: 700,
+    marginTop: 8,
+    lineHeight: 1.7,
+    maxWidth: 700,
+  },
+
+  badges: {
+    marginTop: 12,
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+
+  badge: {
+    padding: "7px 12px",
+    borderRadius: 999,
+    fontSize: 12,
+    color: "#111827",
+    fontWeight: 700,
+    background:
+      "radial-gradient(700px 180px at 15% 0%, rgba(255,0,102,0.04), transparent 55%), linear-gradient(180deg,#ffffff,#fffaf8)",
+    border: "1px solid rgba(255,232,190,0.34)",
+    boxShadow: "0 8px 18px rgba(17,24,39,0.04)",
+  },
+
+  filtersWrap: {
+    minWidth: 280,
+    flex: 1,
+  },
+
+ filters: {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: 12,
+  padding: 12,
+  border: "1px solid rgba(255,232,190,0.34)",
+  borderRadius: 18,
+  background:
+    "radial-gradient(700px 180px at 15% 0%, rgba(255,0,102,0.04), transparent 55%)," +
+    "radial-gradient(760px 200px at 95% 0%, rgba(0,102,255,0.04), transparent 60%)," +
+    "linear-gradient(180deg,#ffffff,#fffaf8)",
+  boxShadow: "0 8px 18px rgba(17,24,39,0.04)",
+},
+
+filterFieldParty: {
+  display: "grid",
+  gap: 6,
+  minWidth: 220,
+},
+filterFieldDate: {
+  display: "grid",
+  gap: 6,
+  minWidth: 140,
+},
+
+  filterLabel: {
+    fontSize: 11,
+    fontWeight: 900,
+    color: "#475569",
+  },
+
+  input: {
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: 14,
+    border: "1px solid rgba(17,24,39,0.10)",
+    fontSize: 13,
+    fontFamily: "Arial, Helvetica, sans-serif",
+    outline: "none",
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.92))",
+    color: "#111827",
+    boxSizing: "border-box",
+  },
+
+actions: {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  alignItems: "end",
+},
+
+  primary: {
+    padding: "11px 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,232,190,0.45)",
+    background: "linear-gradient(135deg,#a100ff,#ff0066,#ff7a00)",
+    color: "#fff",
+    fontWeight: 900,
+    cursor: "pointer",
+    fontSize: 13,
+    fontFamily: "Arial, Helvetica, sans-serif",
+    boxShadow: "0 12px 24px rgba(161,0,255,0.12)",
+  },
+
+  secondary: {
+    padding: "11px 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(17,24,39,0.12)",
+    background: "#fff",
+    color: "#111827",
+    fontWeight: 900,
+    cursor: "pointer",
+    fontSize: 13,
+    fontFamily: "Arial, Helvetica, sans-serif",
+  },
+
+  selectedLine: {
+    marginTop: 10,
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: 700,
+  },
+
+  dateErr: {
+    marginTop: 8,
+    fontSize: 12,
+    color: "#991b1b",
+    fontWeight: 800,
+  },
+
+  err: {
+    marginBottom: 12,
+    background: "rgba(239,68,68,0.10)",
+    border: "1px solid rgba(239,68,68,0.22)",
+    color: "#991b1b",
+    padding: "12px 14px",
+    borderRadius: 16,
+    fontWeight: 900,
+    fontSize: 13,
+  },
+
+  card: {
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.90))",
+    borderRadius: 20,
+    border: "1px solid rgba(255,232,190,0.36)",
+    boxShadow: "0 14px 30px rgba(17,24,39,0.07)",
+    padding: 14,
+  },
+
+  cardHead: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
+    marginBottom: 10,
+  },
+
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: 900,
+    color: "#111827",
+  },
+
+  muted: {
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: 800,
+  },
+
+  tableWrap: {
+    overflowX: "auto",
+    borderRadius: 16,
+  },
+
+  table: {
+    width: "100%",
+    borderCollapse: "separate",
+    borderSpacing: 0,
+    minWidth: 980,
+  },
+
+  th: {
+    textAlign: "left",
+    fontSize: 11,
+    fontWeight: 900,
+    color: "#475569",
+    padding: "12px 10px",
+    borderBottom: "1px solid rgba(17,24,39,0.10)",
+    background: "rgba(248,250,252,0.95)",
+    position: "sticky",
+    top: 0,
+    zIndex: 1,
+    whiteSpace: "nowrap",
+  },
+
+  td: {
+    padding: "12px 10px",
+    borderBottom: "1px solid rgba(17,24,39,0.08)",
+    fontSize: 12,
+    color: "#111827",
+    verticalAlign: "top",
+    whiteSpace: "nowrap",
+    background: "transparent",
+  },
+
+  tdNarr: {
+    padding: "12px 10px",
+    borderBottom: "1px solid rgba(17,24,39,0.08)",
+    fontSize: 12,
+    color: "#111827",
+    verticalAlign: "top",
+    minWidth: 220,
+    maxWidth: 420,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+
+  tdCenter: {
+    padding: 20,
+    textAlign: "center",
+    color: "#64748b",
+    fontSize: 13,
+    fontWeight: 700,
+  },
+
+  specialRow: {
+    background:
+      "radial-gradient(700px 180px at 15% 0%, rgba(255,0,102,0.03), transparent 55%), linear-gradient(180deg,#fafafa,#f8fafc)",
+    fontWeight: 800,
+  },
+
+  noAttach: {
+    color: "#94a3b8",
+    fontSize: 12,
+    fontWeight: 700,
+  },
+
+  footerNote: {
+    marginTop: 12,
+    textAlign: "center",
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: 700,
+  },
+};
 
 function fmt(n) {
   const x = Number(n || 0);
   return x ? x.toLocaleString("en-IN") : "0";
 }
+
 function fmtBlank(n) {
   const x = Number(n || 0);
   return x ? x.toLocaleString("en-IN") : "";

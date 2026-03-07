@@ -1,6 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { api } from "../lib/api"; // make sure api has endpoints below
+import { api } from "../lib/api";
+
+const pageAnim = {
+  hidden: { opacity: 0, y: 10 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.3 } },
+};
+
+const modalAnim = {
+  hidden: { opacity: 0, y: 10, scale: 0.985 },
+  show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.22 } },
+};
 
 const IconBtn = ({ title, onClick, danger, children }) => (
   <button
@@ -8,16 +18,8 @@ const IconBtn = ({ title, onClick, danger, children }) => (
     title={title}
     onClick={onClick}
     style={{
-      height: 34,
-      width: 38,
-      borderRadius: 12,
-      border: "1px solid rgba(2,6,23,0.12)",
-      background: danger ? "rgba(239,68,68,0.08)" : "white",
-      color: danger ? "#991b1b" : "#0f172a",
-      fontWeight: 900,
-      cursor: "pointer",
-      display: "grid",
-      placeItems: "center",
+      ...S.iconBtn,
+      ...(danger ? S.iconBtnDanger : {}),
     }}
   >
     {children}
@@ -26,15 +28,17 @@ const IconBtn = ({ title, onClick, danger, children }) => (
 
 const Modal = ({ open, title, onClose, children }) => {
   if (!open) return null;
+
   return (
     <div style={S.modalBackdrop} onMouseDown={onClose}>
       <motion.div
+        variants={modalAnim}
+        initial="hidden"
+        animate="show"
         onMouseDown={(e) => e.stopPropagation()}
-        initial={{ opacity: 0, y: 10, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.22 }}
         style={S.modalCard}
       >
+        <div style={S.modalShine} />
         <div style={S.modalHead}>
           <div style={S.modalTitle}>{title}</div>
           <button type="button" onClick={onClose} style={S.modalClose}>
@@ -59,18 +63,24 @@ function Field({ label, children }) {
 export default function Customers() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-
   const [list, setList] = useState([]);
   const [selected, setSelected] = useState(null);
   const [q, setQ] = useState("");
-
-  // modal
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState("create"); // create | edit | view
+  const [mode, setMode] = useState("create");
   const [saving, setSaving] = useState(false);
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth <= 768 : false
+  );
 
   const blank = { name: "", email: "", password: "", sendEmail: true };
   const [form, setForm] = useState(blank);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   async function load(keepSelectionId) {
     setErr("");
@@ -81,7 +91,6 @@ export default function Customers() {
       const arr = Array.isArray(rows) ? rows : [];
       setList(arr);
 
-      // keep selection stable (optional)
       if (keepSelectionId) {
         const found = arr.find((x) => x.id === keepSelectionId);
         setSelected(found || null);
@@ -102,7 +111,11 @@ export default function Customers() {
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return list;
-    return list.filter((x) => (x?.name || "").toLowerCase().includes(s));
+    return list.filter((x) => {
+      const name = (x?.name || "").toLowerCase();
+      const email = (x?.email || "").toLowerCase();
+      return name.includes(s) || email.includes(s);
+    });
   }, [q, list]);
 
   function openCreate() {
@@ -141,7 +154,9 @@ export default function Customers() {
 
     if (!form.name.trim()) return setErr("Name required");
     if (!form.email.trim()) return setErr("Email required");
-    if (mode === "create" && !form.password.trim()) return setErr("Password required");
+    if (mode === "create" && !form.password.trim()) {
+      return setErr("Password required");
+    }
 
     try {
       setSaving(true);
@@ -151,7 +166,7 @@ export default function Customers() {
           name: form.name.trim(),
           email: form.email.trim().toLowerCase(),
           password: form.password,
-          sendEmail: !!form.sendEmail, // ✅ NEW
+          sendEmail: !!form.sendEmail,
         });
 
         await load();
@@ -164,9 +179,10 @@ export default function Customers() {
           name: form.name.trim(),
           email: form.email.trim().toLowerCase(),
         };
-                if (form.password.trim()) {
+
+        if (form.password.trim()) {
           payload.password = form.password;
-          payload.sendEmail = !!form.sendEmail; // ✅ if password reset + checkbox true
+          payload.sendEmail = !!form.sendEmail;
         }
 
         await api.updateCustomer(selected.id, payload);
@@ -195,88 +211,172 @@ export default function Customers() {
   }
 
   return (
-    <div style={S.page}>
-      <div style={S.topRow}>
-        <div>
-          <div style={S.h1}>Users</div>
-          <div style={S.sub}>Create / View / Edit / Delete</div>
+    <motion.div variants={pageAnim} initial="hidden" animate="show" style={S.page}>
+      <div style={S.bgGlow1} />
+      <div style={S.bgGlow2} />
+      <div style={S.bgGlow3} />
+
+      <div style={S.wrap}>
+        <div style={S.hero}>
+          <div style={S.heroShine} />
+
+          <div style={S.heroTop}>
+            <div>
+              <div style={S.kicker}>STAR ENGINEERING</div>
+              <div style={S.h1}>Users</div>
+              <div style={S.sub}>Create, view, edit and manage customer login accounts.</div>
+            </div>
+
+            <div style={S.topActions}>
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search user..."
+                style={{
+                  ...S.search,
+                  width: isMobile ? "100%" : 240,
+                }}
+              />
+              <motion.button
+                whileTap={{ scale: 0.98 }}
+                onClick={openCreate}
+                style={S.primary}
+              >
+                + Add User
+              </motion.button>
+            </div>
+          </div>
         </div>
 
-        <div style={S.topActions}>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search user..."
-            style={S.search}
-          />
-          <motion.button whileTap={{ scale: 0.98 }} onClick={openCreate} style={S.primary}>
-            + Add User
-          </motion.button>
-        </div>
-      </div>
+        {err ? <div style={S.err}>{err}</div> : null}
 
-      {err ? <div style={S.err}>{err}</div> : null}
-
-      <div style={S.layout}>
-        {/* Left list (names only) */}
         <div style={S.listCard}>
-          <div style={S.listTitle}>All Users</div>
+          <div style={S.listHead}>
+            <div>
+              <div style={S.listTitle}>All Users</div>
+              <div style={S.listSub}>
+                {loading ? "Loading users..." : `${filtered.length} user(s) found`}
+              </div>
+            </div>
+          </div>
 
           {loading ? (
-            <div style={S.muted}>Loading...</div>
+            <div style={S.skeletonWrap}>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} style={S.skelRow}>
+                  <div style={S.skelTextWrap}>
+                    <div style={S.skelLine1} />
+                    <div style={S.skelLine2} />
+                  </div>
+                  <div style={S.skelBtns}>
+                    <div style={S.skelBtn} />
+                    <div style={S.skelBtn} />
+                    <div style={S.skelBtn} />
+                    <div style={S.skelBtn} />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : filtered.length === 0 ? (
-            <div style={S.muted}>No users found</div>
+            <div style={S.emptyBox}>
+              <div style={S.emptyTitle}>No users found</div>
+              <div style={S.emptySub}>
+                Try a different search or create a new user.
+              </div>
+            </div>
           ) : (
             <div style={S.list}>
               {filtered.map((row) => (
-                <div key={row.id} style={S.listItem}>
-                  <div style={S.nameOnly}>{row.name}</div>
+                <div
+                  key={row.id}
+                  style={{
+                    ...S.listItem,
+                    flexDirection: isMobile ? "column" : "row",
+                    alignItems: isMobile ? "stretch" : "center",
+                  }}
+                >
+                  <div style={S.userInfo}>
+                    <div style={S.userAvatar}>
+                      {(row?.name || "U").slice(0, 1).toUpperCase()}
+                    </div>
 
-                  <div style={S.actions}>
-  <IconBtn title="View" onClick={() => openView(row)}>👁</IconBtn>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={S.nameOnly}>{row.name}</div>
+                      <div style={S.userEmail}>{row.email || "No email"}</div>
+                    </div>
+                  </div>
 
-  <IconBtn title="Edit" onClick={() => openEdit(row)}>✏️</IconBtn>
+                  <div
+                    style={{
+                      ...S.actions,
+                      justifyContent: isMobile ? "flex-start" : "flex-end",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <IconBtn title="View" onClick={() => openView(row)}>👁</IconBtn>
 
-<IconBtn
-  title="Send Credentials Email"
-  onClick={async () => {
-    try {
-      const newPass = prompt(
-        `Enter NEW password for "${row.name}" (min 4 chars).\n\nNote: Old password retrieve nahi ho sakta.`
-      );
-      if (newPass === null) return; // cancel
-      if (!String(newPass).trim() || String(newPass).trim().length < 4) {
-        return alert("Password required (min 4 chars)");
-      }
+                    <IconBtn title="Edit" onClick={() => openEdit(row)}>✏️</IconBtn>
 
-      await api.sendCustomerCredentials(row.id, String(newPass).trim());
-      alert("Email sent ✅ (password reset done)");
-    } catch (e) {
-      alert(e?.response?.data?.message || e.message || "Failed to send email");
-    }
-  }}
->
-  ✉️
-</IconBtn>
+                    <IconBtn
+                      title="Send Credentials Email"
+                      onClick={async () => {
+                        try {
+                          const newPass = prompt(
+                            `Enter NEW password for "${row.name}" (min 4 chars).\n\nNote: Old password retrieve nahi ho sakta.`
+                          );
+                          if (newPass === null) return;
+                          if (
+                            !String(newPass).trim() ||
+                            String(newPass).trim().length < 4
+                          ) {
+                            return alert("Password required (min 4 chars)");
+                          }
 
-  <IconBtn title="Delete" danger onClick={() => onDelete(row)}>🗑</IconBtn>
-</div>
+                          await api.sendCustomerCredentials(
+                            row.id,
+                            String(newPass).trim()
+                          );
+                          alert("Email sent ✅ (password reset done)");
+                        } catch (e) {
+                          alert(
+                            e?.response?.data?.message ||
+                              e.message ||
+                              "Failed to send email"
+                          );
+                        }
+                      }}
+                    >
+                      ✉️
+                    </IconBtn>
+
+                    <IconBtn title="Delete" danger onClick={() => onDelete(row)}>
+                      🗑
+                    </IconBtn>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </div>
-
-        {/* Right panel removed (as you asked) */}
       </div>
 
-      {/* Modal */}
       <Modal
         open={open}
-        title={mode === "create" ? "Create User" : mode === "edit" ? "Edit User" : "View User"}
+        title={
+          mode === "create"
+            ? "Create User"
+            : mode === "edit"
+            ? "Edit User"
+            : "View User"
+        }
         onClose={() => setOpen(false)}
       >
-        <div style={S.formGrid}>
+        <div
+          style={{
+            ...S.formGrid,
+            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+          }}
+        >
           <Field label="Name">
             <input
               style={S.input}
@@ -308,39 +408,25 @@ export default function Customers() {
               placeholder={mode === "edit" ? "Leave blank to keep same" : ""}
             />
           </Field>
+
           {mode !== "view" && (
-  <div style={{ marginTop: 6 }}>
-    <label
-      style={{
-        display: "flex",
-        gap: 10,
-        alignItems: "center",
-        fontWeight: 900,
-        fontSize: 12,
-        color: "#0f172a",
-      }}
-    >
-      <input
-        type="checkbox"
-        checked={!!form.sendEmail}
-        onChange={(e) =>
-          setForm((p) => ({ ...p, sendEmail: e.target.checked }))
-        }
-      />
-      Send credentials email
-    </label>
-    <div
-      style={{
-        marginTop: 4,
-        fontSize: 12,
-        color: "#64748b",
-        fontWeight: 700,
-      }}
-    >
-      Uncheck = user create ho jayega, email nahi jayega.
-    </div>
-  </div>
-)}
+            <div style={S.checkboxWrap}>
+              <label style={S.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={!!form.sendEmail}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, sendEmail: e.target.checked }))
+                  }
+                />
+                Send credentials email
+              </label>
+
+              <div style={S.checkboxHint}>
+                Uncheck = user create ho jayega, email nahi jayega.
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={S.modalFoot}>
@@ -356,70 +442,174 @@ export default function Customers() {
               style={S.primary}
             >
               {saving
-  ? "Saving..."
-  : mode === "create"
-  ? form.sendEmail
-    ? "Create & Send Email"
-    : "Create User"
-  : "Save Changes"}
+                ? "Saving..."
+                : mode === "create"
+                ? form.sendEmail
+                  ? "Create & Send Email"
+                  : "Create User"
+                : "Save Changes"}
             </motion.button>
           )}
         </div>
 
         <div style={S.note}>
-          Note: Password email me jayega (as you asked). Better security ke liye later “reset password”
+          Note: Password email me jayega. Better security ke liye later reset password
           flow add kar denge.
         </div>
       </Modal>
-    </div>
+    </motion.div>
   );
 }
 
 const S = {
   page: {
+    position: "relative",
+    overflow: "hidden",
     padding: 14,
-    maxWidth: 1200,
-    margin: "0 auto",
     fontFamily: "Arial, Helvetica, sans-serif",
   },
-  topRow: {
+
+  wrap: {
+    maxWidth: 1200,
+    margin: "0 auto",
+    position: "relative",
+    zIndex: 2,
+  },
+
+  bgGlow1: {
+    position: "absolute",
+    top: -80,
+    left: -80,
+    width: 260,
+    height: 260,
+    borderRadius: "50%",
+    background: "rgba(255,0,102,0.08)",
+    filter: "blur(70px)",
+    pointerEvents: "none",
+  },
+
+  bgGlow2: {
+    position: "absolute",
+    top: 140,
+    right: -80,
+    width: 260,
+    height: 260,
+    borderRadius: "50%",
+    background: "rgba(0,102,255,0.08)",
+    filter: "blur(80px)",
+    pointerEvents: "none",
+  },
+
+  bgGlow3: {
+    position: "absolute",
+    bottom: -120,
+    left: "25%",
+    width: 320,
+    height: 320,
+    borderRadius: "50%",
+    background: "rgba(255,170,0,0.08)",
+    filter: "blur(95px)",
+    pointerEvents: "none",
+  },
+
+  hero: {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 14,
+    background:
+      "radial-gradient(900px 260px at 12% 0%, rgba(255,170,0,0.10), transparent 60%)," +
+      "radial-gradient(820px 240px at 88% 0%, rgba(163,0,255,0.08), transparent 60%)," +
+      "radial-gradient(760px 220px at 100% 100%, rgba(0,102,255,0.06), transparent 60%)," +
+      "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.90))",
+    color: "#111827",
+    border: "1px solid rgba(255,232,190,0.42)",
+    boxShadow:
+      "0 18px 40px rgba(17,24,39,0.08), 0 8px 18px rgba(17,24,39,0.05)",
+  },
+
+  heroShine: {
+    height: 4,
+    borderRadius: 999,
+    marginBottom: 16,
+    background:
+      "linear-gradient(90deg, rgba(161,0,255,0.10), rgba(255,122,0,0.22), rgba(0,102,255,0.10))",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+  },
+
+  heroTop: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "end",
-    gap: 10,
+    gap: 14,
     flexWrap: "wrap",
   },
-  h1: { fontSize: 20, fontWeight: 900, color: "#0f172a" },
-  sub: { fontSize: 12, color: "#64748b", fontWeight: 700, marginTop: 4 },
 
-  topActions: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
+  kicker: {
+    fontSize: 11,
+    fontWeight: 900,
+    letterSpacing: 1.2,
+    color: "#7a0000",
+    marginBottom: 8,
+  },
+
+  h1: {
+    fontSize: "clamp(24px, 3vw, 30px)",
+    fontWeight: 900,
+    lineHeight: 1.06,
+    color: "#111827",
+  },
+
+  sub: {
+    fontSize: 14,
+    color: "#475569",
+    fontWeight: 700,
+    marginTop: 8,
+    lineHeight: 1.7,
+    maxWidth: 700,
+  },
+
+  topActions: {
+    display: "flex",
+    gap: 10,
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
+
   search: {
-    width: 220,
-    padding: "9px 10px",
-    borderRadius: 12,
-    border: "1px solid rgba(2,6,23,0.12)",
+    padding: "11px 12px",
+    borderRadius: 14,
+    border: "1px solid rgba(17,24,39,0.10)",
     fontSize: 13,
     outline: "none",
     fontFamily: "Arial, Helvetica, sans-serif",
+    boxSizing: "border-box",
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.90))",
+    color: "#111827",
+    boxShadow: "0 8px 18px rgba(17,24,39,0.04)",
   },
 
   primary: {
-    padding: "9px 12px",
-    borderRadius: 12,
-    border: "none",
-    background: "linear-gradient(135deg,#2563eb,#7c3aed)",
+    padding: "11px 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,232,190,0.45)",
+    background: "linear-gradient(135deg,#a100ff,#ff0066,#ff7a00)",
     color: "#fff",
     fontWeight: 900,
     cursor: "pointer",
     fontSize: 13,
     fontFamily: "Arial, Helvetica, sans-serif",
+    boxShadow: "0 12px 24px rgba(161,0,255,0.12)",
   },
+
   secondary: {
-    padding: "9px 12px",
-    borderRadius: 12,
-    border: "1px solid rgba(2,6,23,0.12)",
+    padding: "11px 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(17,24,39,0.12)",
     background: "#fff",
-    color: "#0f172a",
+    color: "#111827",
     fontWeight: 900,
     cursor: "pointer",
     fontSize: 13,
@@ -427,46 +617,203 @@ const S = {
   },
 
   err: {
-    marginTop: 10,
+    marginBottom: 12,
     background: "rgba(239,68,68,0.10)",
     border: "1px solid rgba(239,68,68,0.22)",
     color: "#991b1b",
     padding: "12px 14px",
-    borderRadius: 14,
+    borderRadius: 16,
     fontWeight: 900,
     fontSize: 13,
   },
 
-  layout: { marginTop: 12, display: "grid", gridTemplateColumns: "1fr", gap: 12 },
-
   listCard: {
-    background: "#fff",
-    borderRadius: 16,
-    border: "1px solid rgba(2,6,23,0.08)",
-    boxShadow: "0 10px 24px rgba(2,6,23,0.06)",
-    padding: 12,
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.90))",
+    borderRadius: 20,
+    border: "1px solid rgba(255,232,190,0.36)",
+    boxShadow: "0 14px 30px rgba(17,24,39,0.07)",
+    padding: 14,
     minHeight: 420,
   },
-  listTitle: { fontSize: 13, fontWeight: 900, color: "#0f172a", marginBottom: 10 },
-  list: { display: "grid", gap: 10 },
 
-  listItem: {
-    width: "100%",
-    border: "1px solid rgba(2,6,23,0.10)",
-    borderRadius: 14,
-    background: "white",
-    padding: 10,
+  listHead: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
+    flexWrap: "wrap",
+    marginBottom: 12,
   },
-  nameOnly: { fontSize: 13, fontWeight: 900, color: "#0f172a", textAlign: "left" },
-  actions: { display: "flex", gap: 8, flexShrink: 0 },
 
-  muted: { fontSize: 13, color: "#64748b", fontWeight: 800 },
+  listTitle: {
+    fontSize: 15,
+    fontWeight: 900,
+    color: "#111827",
+  },
 
-  // modal
+  listSub: {
+    marginTop: 4,
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: 700,
+  },
+
+  list: {
+    display: "grid",
+    gap: 12,
+  },
+
+  listItem: {
+    width: "100%",
+    border: "1px solid rgba(255,232,190,0.34)",
+    borderRadius: 18,
+    background:
+      "radial-gradient(700px 180px at 15% 0%, rgba(255,0,102,0.04), transparent 55%)," +
+      "radial-gradient(760px 200px at 95% 0%, rgba(0,102,255,0.04), transparent 60%)," +
+      "linear-gradient(180deg,#ffffff,#fffdfb)",
+    padding: 12,
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    boxShadow: "0 10px 20px rgba(17,24,39,0.04)",
+  },
+
+  userInfo: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    minWidth: 0,
+    flex: 1,
+  },
+
+  userAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    background: "linear-gradient(135deg,#a100ff,#ff0066,#ff7a00)",
+    color: "#fff",
+    display: "grid",
+    placeItems: "center",
+    fontWeight: 900,
+    fontSize: 16,
+    flexShrink: 0,
+    boxShadow: "0 10px 20px rgba(161,0,255,0.16)",
+  },
+
+  nameOnly: {
+    fontSize: 14,
+    fontWeight: 900,
+    color: "#111827",
+    textAlign: "left",
+    wordBreak: "break-word",
+  },
+
+  userEmail: {
+    marginTop: 4,
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: 700,
+    wordBreak: "break-word",
+  },
+
+  actions: {
+    display: "flex",
+    gap: 8,
+    flexShrink: 0,
+  },
+
+  iconBtn: {
+    height: 36,
+    width: 40,
+    borderRadius: 12,
+    border: "1px solid rgba(17,24,39,0.10)",
+    background: "#fff",
+    color: "#111827",
+    fontWeight: 900,
+    cursor: "pointer",
+    display: "grid",
+    placeItems: "center",
+    boxShadow: "0 8px 16px rgba(17,24,39,0.04)",
+  },
+
+  iconBtnDanger: {
+    background: "rgba(239,68,68,0.08)",
+    color: "#991b1b",
+    border: "1px solid rgba(239,68,68,0.14)",
+  },
+
+  skeletonWrap: {
+    display: "grid",
+    gap: 12,
+  },
+
+  skelRow: {
+    borderRadius: 18,
+    border: "1px solid rgba(255,232,190,0.30)",
+    background: "#fff",
+    padding: 12,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+
+  skelTextWrap: {
+    display: "grid",
+    gap: 8,
+    flex: 1,
+  },
+
+  skelLine1: {
+    width: "35%",
+    height: 14,
+    borderRadius: 10,
+    background: "rgba(17,24,39,0.09)",
+  },
+
+  skelLine2: {
+    width: "48%",
+    height: 12,
+    borderRadius: 10,
+    background: "rgba(17,24,39,0.06)",
+  },
+
+  skelBtns: {
+    display: "flex",
+    gap: 8,
+  },
+
+  skelBtn: {
+    width: 40,
+    height: 36,
+    borderRadius: 12,
+    background: "rgba(17,24,39,0.07)",
+  },
+
+  emptyBox: {
+    padding: "26px 14px",
+    textAlign: "center",
+    borderRadius: 18,
+    border: "1px dashed rgba(255,170,0,0.45)",
+    background:
+      "radial-gradient(700px 180px at 15% 0%, rgba(255,0,102,0.04), transparent 55%)," +
+      "linear-gradient(180deg,#ffffff,#fffaf7)",
+  },
+
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: 900,
+    color: "#111827",
+  },
+
+  emptySub: {
+    marginTop: 6,
+    fontSize: 13,
+    color: "#64748b",
+    fontWeight: 700,
+  },
+
   modalBackdrop: {
     position: "fixed",
     inset: 0,
@@ -476,54 +823,123 @@ const S = {
     padding: 14,
     zIndex: 999,
   },
+
   modalCard: {
     width: "min(720px, 96vw)",
-    background: "#fff",
-    borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.2)",
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.94))",
+    borderRadius: 22,
+    border: "1px solid rgba(255,232,190,0.42)",
     boxShadow: "0 24px 90px rgba(2,6,23,0.30)",
     overflow: "hidden",
   },
+
+  modalShine: {
+    height: 4,
+    background:
+      "linear-gradient(90deg, rgba(161,0,255,0.10), rgba(255,122,0,0.22), rgba(0,102,255,0.10))",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+  },
+
   modalHead: {
-    padding: 14,
+    padding: 16,
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    borderBottom: "1px solid rgba(2,6,23,0.08)",
+    borderBottom: "1px solid rgba(17,24,39,0.08)",
   },
-  modalTitle: { fontSize: 14, fontWeight: 900, color: "#0f172a" },
+
+  modalTitle: {
+    fontSize: 15,
+    fontWeight: 900,
+    color: "#111827",
+  },
+
   modalClose: {
-    height: 34,
-    width: 34,
+    height: 36,
+    width: 36,
     borderRadius: 12,
-    border: "1px solid rgba(2,6,23,0.12)",
+    border: "1px solid rgba(17,24,39,0.12)",
     background: "#fff",
     fontWeight: 900,
     cursor: "pointer",
+    color: "#111827",
   },
-  modalBody: { padding: 14 },
 
-  formGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
-  field: { display: "grid", gap: 6 },
-  label: { fontSize: 12, fontWeight: 900, color: "#0f172a" },
+  modalBody: {
+    padding: 16,
+  },
+
+  formGrid: {
+    display: "grid",
+    gap: 12,
+  },
+
+  field: {
+    display: "grid",
+    gap: 6,
+  },
+
+  label: {
+    fontSize: 12,
+    fontWeight: 900,
+    color: "#111827",
+  },
+
   input: {
     width: "100%",
-    padding: "10px 10px",
-    borderRadius: 12,
-    border: "1px solid rgba(2,6,23,0.12)",
+    padding: "11px 12px",
+    borderRadius: 14,
+    border: "1px solid rgba(17,24,39,0.10)",
     outline: "none",
     fontSize: 13,
     boxSizing: "border-box",
     fontFamily: "Arial, Helvetica, sans-serif",
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.92))",
+    color: "#111827",
   },
 
-  modalFoot: { marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" },
-  note: { marginTop: 10, fontSize: 12, color: "#64748b", fontWeight: 700 },
-};
+  checkboxWrap: {
+    marginTop: 4,
+    padding: "12px 14px",
+    borderRadius: 16,
+    border: "1px solid rgba(255,232,190,0.34)",
+    background:
+      "radial-gradient(700px 180px at 15% 0%, rgba(255,0,102,0.04), transparent 55%)," +
+      "linear-gradient(180deg,#ffffff,#fffaf8)",
+  },
 
-// responsive
-const mq = window.matchMedia?.("(max-width: 980px)");
-if (mq?.matches) {
-  S.formGrid.gridTemplateColumns = "1fr";
-  S.search.width = "min(260px, 92vw)";
-}
+  checkboxLabel: {
+    display: "flex",
+    gap: 10,
+    alignItems: "center",
+    fontWeight: 900,
+    fontSize: 12,
+    color: "#111827",
+  },
+
+  checkboxHint: {
+    marginTop: 6,
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: 700,
+    lineHeight: 1.6,
+  },
+
+  modalFoot: {
+    marginTop: 14,
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+
+  note: {
+    marginTop: 12,
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: 700,
+    lineHeight: 1.7,
+  },
+};
