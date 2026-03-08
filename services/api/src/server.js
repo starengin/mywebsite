@@ -7,6 +7,10 @@ const multer = require("multer");
 const { PrismaClient } = require("@prisma/client");
 const fs = require("fs");
 const path = require("path");
+const { createClient } = require("@supabase/supabase-js");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+const execFileAsync = promisify(execFile);
 // EMAIL TEMPLATES (safe load)
 // ✅ EMAIL TEMPLATES (safe load) — server.js is in /src, templates are in /emailTemplates (one level up)
 const TEMPLATES_DIR = path.join(__dirname, "..", "emailTemplates");
@@ -50,6 +54,14 @@ const pdfParse = typeof pdfParseLib === "function" ? pdfParseLib : pdfParseLib.d
 
 
 dotenv.config();
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_BUCKET = process.env.SUPABASE_BUCKET || "transaction-pdfs";
+
+const supabase =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    : null;
 const RESEND_FROM = process.env.RESEND_FROM || "noreply@mail.stareng.co.in";
 // better format (recommended):
 const RESEND_FROM_FMT = `donotreply <${RESEND_FROM}>`;
@@ -97,10 +109,14 @@ async function sendOtpEmail({ to_email, to_name, otp, expiry_minutes }) {
 /* =========================
    ZOHO SMTP (WELCOME EMAIL)
 ========================= */
+const SMTP_PORT = Number(process.env.ZOHO_SMTP_PORT || 465);
+const SMTP_SECURE =
+  String(process.env.ZOHO_SMTP_SECURE || (SMTP_PORT === 465 ? "true" : "false")) === "true";
+
 const smtp = nodemailer.createTransport({
   host: process.env.ZOHO_SMTP_HOST || "smtp.zoho.in",
-  port: Number(process.env.ZOHO_SMTP_PORT || 465),
-  secure: true, // ✅ 465 => true
+  port: SMTP_PORT,
+  secure: SMTP_SECURE,
   auth: {
     user: process.env.ZOHO_EMAIL,
     pass: process.env.ZOHO_APP_PASSWORD,
@@ -694,6 +710,181 @@ function fileToResendAttachmentFromDisk(file) {
     content: fs.readFileSync(file.path).toString("base64"),
   };
 }
+function isPdfFile(file) {
+  const name = String(file?.originalname || "").toLowerCase();
+  const mime = String(file?.mimetype || "").toLowerCase();
+  return mime === "application/pdf" || name.endsWith(".pdf");
+}
+
+async function compressPdfWithGhostscript(inputPath, outputPath) {
+  const gsCmd = process.env.GS_COMMAND || "gs";
+
+  const args = [
+    "-sDEVICE=pdfwrite",
+    "-dCompatibilityLevel=1.4",
+    "-dNOPAUSE",
+    "-dQUIET",
+    "-dBATCH",
+    "-dSAFER",
+
+    "-dPDFSETTINGS=/screen",
+
+    "-dDetectDuplicateImages=true",
+    "-dCompressFonts=true",
+    "-dSubsetFonts=true",
+
+    "-dDownsampleColorImages=true",
+    "-dColorImageDownsampleType=/Bicubic",
+    "-dColorImageResolution=96",
+
+    "-dDownsampleGrayImages=true",
+    "-dGrayImageDownsampleType=/Bicubic",
+    "-dGrayImageResolution=96",
+
+    "-dDownsampleMonoImages=true",
+    "-dMonoImageDownsampleType=/Subsample",
+    "-dMonoImageResolution=150",
+
+    `-sOutputFile=${outputPath}`,
+    inputPath,
+  ];
+
+  await execFileAsync(gsCmd, args);
+}
+
+async function maybeCompressPdf(file) {
+  if (!file?.path || !isPdfFile(file)) {
+    return file;
+  }
+
+  const originalPath = file.path;
+  const parsed = path.parse(originalPath);
+  const compressedPath = path.join(parsed.dir, `${parsed.name}-compressed.pdf`);
+
+  try {
+    await compressPdfWithGhostscript(originalPath, compressedPath);
+
+    if (!fs.existsSync(compressedPath)) {
+      return file;
+    }
+
+    const originalSize = fs.statSync(originalPath).size;
+    const compressedSize = fs.statSync(compressedPath).size;
+
+    console.log("PDF SIZE CHECK:", {
+      name: file.originalname,
+      originalSize,
+      compressedSize,
+    });
+
+    if (compressedSize > 0 && compressedSize < originalSize * 0.90) {
+      try { fs.unlinkSync(originalPath); } catch {}
+
+      return {
+        ...file,
+        path: compressedPath,
+        filename: path.basename(compressedPath),
+        size: compressedSize,
+        originalSize,
+        compressed: true,
+      };
+    }
+
+    try { fs.unlinkSync(compressedPath); } catch {}
+
+    return {
+      ...file,
+      originalSize,
+      compressed: false,
+    };
+  } catch (err) {
+    console.error("PDF COMPRESSION FAILED, USING ORIGINAL:", err?.message || err);
+
+    if (fs.existsSync(compressedPath)) {
+      try { fs.unlinkSync(compressedPath); } catch {}
+    }
+
+    return {
+      ...file,
+      compressed: false,
+    };
+  }
+}
+function makeStoragePath(prefix, originalName = "file.pdf") {
+  const ext = path.extname(originalName || "") || ".pdf";
+  const base = path
+    .basename(originalName || "file.pdf", ext)
+    .replace(/[^a-zA-Z0-9-_]/g, "_")
+    .slice(0, 80);
+
+  return `${prefix}/${Date.now()}_${crypto.randomBytes(6).toString("hex")}_${base}${ext}`;
+}
+
+async function uploadFileToSupabase(file, prefix = "txn") {
+  if (!supabase) throw new Error("Supabase not configured");
+
+  const storagePath = makeStoragePath(prefix, file.originalname || "file.pdf");
+
+  let fileContent;
+  if (file.buffer) {
+    fileContent = file.buffer;
+  } else if (file.path) {
+    fileContent = fs.readFileSync(file.path);
+  } else {
+    throw new Error("No file buffer/path found for upload");
+  }
+
+  const { error } = await supabase.storage
+    .from(SUPABASE_BUCKET)
+    .upload(storagePath, fileContent, {
+      contentType: file.mimetype || "application/pdf",
+      upsert: false,
+    });
+
+  if (error) throw error;
+
+  return {
+    storagePath,
+    originalName: file.originalname,
+    mimeType: file.mimetype,
+    size: file.size,
+  };
+}
+
+async function downloadFromSupabase(storagePath) {
+  if (!supabase) throw new Error("Supabase not configured");
+
+  const { data, error } = await supabase.storage
+    .from(SUPABASE_BUCKET)
+    .download(storagePath);
+
+  if (error) throw error;
+  if (!data) throw new Error("File not found in storage");
+
+  const arr = await data.arrayBuffer();
+  return Buffer.from(arr);
+}
+
+async function deleteFromSupabase(storagePath) {
+  if (!supabase || !storagePath) return;
+
+  const { error } = await supabase.storage
+    .from(SUPABASE_BUCKET)
+    .remove([storagePath]);
+
+  if (error) {
+    console.error("SUPABASE DELETE ERROR:", error.message || error);
+  }
+}
+
+async function fileToResendAttachmentFromStorage(pdfRow) {
+  const content = await downloadFromSupabase(pdfRow.filePath);
+
+  return {
+    filename: pdfRow.originalName || "attachment.pdf",
+    content: content.toString("base64"),
+  };
+}
 const app = express();
 const prisma = new PrismaClient();
 app.use(express.json({ limit: "10mb" }));
@@ -948,7 +1139,7 @@ await resend.emails.send({
   }
 );
 
-app.get("/admin/leads", async (req, res) => {
+app.get("/admin/leads", requireAdmin, async (req, res) => {
   try {
     const items = await prisma.contactLead.findMany({
       orderBy: { createdAt: "desc" },
@@ -1301,7 +1492,10 @@ app.post("/customers", requireAdmin, async (req, res) => {
     });
 
     // ✅ default behavior: sendEmail = true unless explicitly false
-    const shouldSend = sendEmail === undefined ? true : !!sendEmail;
+    const shouldSend =
+  sendEmail === undefined
+    ? true
+    : (String(sendEmail) === "true" || String(sendEmail) === "1");
 
     // respond immediately
     res.json({ ok: true, customer: created, emailQueued: shouldSend });
@@ -1439,7 +1633,7 @@ app.delete("/customers/:id", requireAdmin, async (req, res) => {
     res.status(500).json({ message: "Delete failed", details: String(e.message || e) });
   }
 });
-app.put("/users/:id", async (req, res) => {
+app.put("/users/:id", requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const body = req.body || {};
@@ -1461,12 +1655,12 @@ app.put("/users/:id", async (req, res) => {
   }
 });
 
-app.get("/users", async (req, res) => {
+app.get("/users", requireAdmin, async (req, res) => {
   const users = await prisma.user.findMany({ where: { role: "CUSTOMER" } });
   res.json(users);
 });
 
-app.delete("/users/:id", async (req, res) => {
+app.delete("/users/:id", requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
 
@@ -1613,7 +1807,13 @@ function extractFromPdfText(text) {
 
 // ✅ Scan PDF -> extract basic fields (autofill)
 
-const uploadDisk = multer({ dest: UPLOAD_DIR });
+const uploadDisk = multer({
+  dest: UPLOAD_DIR,
+  limits: {
+    fileSize: 25 * 1024 * 1024,
+    files: 50,
+  },
+});
 // ✅ Scan Transaction PDF -> extract type, party, date, voucherNo, amount (LOCATION/HEADING BASED)
 const uploadMem = multer({ storage: multer.memoryStorage() });
 
@@ -2208,7 +2408,7 @@ app.post("/transactions/scan", uploadMem.single("pdf"), async (req, res) => {
 
 
 // list (admin side)
-app.get("/transactions", async (req, res) => {
+app.get("/transactions", requireAdmin, async (req, res) => {
   try {
     const { partyId, from, to, q } = req.query;
 
@@ -2308,23 +2508,38 @@ app.post("/transactions", requireAdmin, uploadDisk.array("pdfs"), async (req, re
         drcr,
         narration,
         partyId: Number(partyId),
-        createdById: 1,
+        createdById: Number(req.admin?.id || 1),
       },
     });
 
-    if (req.files?.length) {
-      for (const file of req.files) {
-        await prisma.transactionPDF.create({
-          data: {
-            transactionId: txn.id,
-            filePath: file.filename,
-            originalName: file.originalname,
-            mimeType: file.mimetype,
-            size: file.size,
-          },
-        });
-      }
+let processedFiles = req.files || [];
+
+if (processedFiles.length) {
+  const finalFiles = [];
+
+  for (const file of processedFiles) {
+    const finalFile = await maybeCompressPdf(file);
+    finalFiles.push(finalFile);
+
+    const uploaded = await uploadFileToSupabase(finalFile, `txn/${txn.id}`);
+
+    await prisma.transactionPDF.create({
+      data: {
+        transactionId: txn.id,
+        filePath: uploaded.storagePath,
+        originalName: uploaded.originalName,
+        mimeType: uploaded.mimeType,
+        size: uploaded.size,
+      },
+    });
+
+    if (finalFile.path && fs.existsSync(finalFile.path)) {
+      try { fs.unlinkSync(finalFile.path); } catch {}
     }
+  }
+
+  processedFiles = finalFiles;
+}
 
     // ✅ respond immediately (never block)
     const shouldSend =
@@ -2381,7 +2596,15 @@ const meta2 = {
 
         const html = buildTxnEmailHTML(type, meta2, party);
 
-        const attachments = (req.files || []).map(fileToResendAttachmentFromDisk);
+        const pdfRows = await prisma.transactionPDF.findMany({
+  where: { transactionId: txn.id },
+  orderBy: { id: "asc" },
+});
+
+const attachments = [];
+for (const p of pdfRows) {
+  attachments.push(await fileToResendAttachmentFromStorage(p));
+}
 
         await resend.emails.send({
           from: RESEND_FROM_FMT,
@@ -2445,16 +2668,14 @@ app.post("/transactions/:id/send-email", requireAdmin, async (req, res) => {
 
         const html = buildTxnEmailHTML(txn.type, meta2, party);
 
-        const attachments = (txn.pdfs || [])
-          .map((p) => {
-            const diskPath = path.join(UPLOAD_DIR, p.filePath);
-            if (!fs.existsSync(diskPath)) return null;
-            return {
-              filename: p.originalName || "attachment.pdf",
-              content: fs.readFileSync(diskPath).toString("base64"),
-            };
-          })
-          .filter(Boolean);
+const attachments = [];
+for (const p of txn.pdfs || []) {
+  try {
+    attachments.push(await fileToResendAttachmentFromStorage(p));
+  } catch (err) {
+    console.error("ATTACHMENT LOAD FAILED:", p.filePath, err.message || err);
+  }
+}
 
         await resend.emails.send({
           from: RESEND_FROM_FMT,
@@ -2475,7 +2696,7 @@ app.post("/transactions/:id/send-email", requireAdmin, async (req, res) => {
   }
 });
 // update txn
-app.put("/transactions/:id", async (req, res) => {
+app.put("/transactions/:id", requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const body = req.body || {};
@@ -2501,16 +2722,17 @@ app.put("/transactions/:id", async (req, res) => {
 });
 
 // delete txn (+ delete pdf records + files)
-app.delete("/transactions/:id", async (req, res) => {
+app.delete("/transactions/:id", requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
 
-    const pdfs = await prisma.transactionPDF.findMany({ where: { transactionId: id } });
-    for (const p of pdfs) {
-      const fpath = path.join(UPLOAD_DIR, p.filePath);
-      if (fs.existsSync(fpath)) fs.unlinkSync(fpath);
-    }
-    await prisma.transactionPDF.deleteMany({ where: { transactionId: id } });
+const pdfs = await prisma.transactionPDF.findMany({ where: { transactionId: id } });
+
+for (const p of pdfs) {
+  await deleteFromSupabase(p.filePath);
+}
+
+await prisma.transactionPDF.deleteMany({ where: { transactionId: id } });
 
     await prisma.transaction.delete({ where: { id } });
 
@@ -2522,28 +2744,36 @@ app.delete("/transactions/:id", async (req, res) => {
 });
 
 // add pdfs to existing txn
-app.post("/transactions/:id/pdfs", uploadDisk.array("pdfs"), async (req, res) => {
+app.post("/transactions/:id/pdfs", requireAdmin, uploadDisk.array("pdfs"), async (req, res) => {
   try {
     const id = Number(req.params.id);
 
     const txn = await prisma.transaction.findUnique({ where: { id } });
     if (!txn) return res.status(404).json({ error: "Transaction not found" });
 
-    const created = [];
-    if (req.files?.length) {
-      for (const file of req.files) {
-        const p = await prisma.transactionPDF.create({
-          data: {
-            transactionId: id,
-            filePath: file.filename,
-            originalName: file.originalname,
-            mimeType: file.mimetype,
-            size: file.size,
-          },
-        });
-        created.push(p);
-      }
+   const created = [];
+if (req.files?.length) {
+  for (const file of req.files) {
+    const finalFile = await maybeCompressPdf(file);
+    const uploaded = await uploadFileToSupabase(finalFile, `txn/${id}`);
+
+    const p = await prisma.transactionPDF.create({
+      data: {
+        transactionId: id,
+        filePath: uploaded.storagePath,
+        originalName: uploaded.originalName,
+        mimeType: uploaded.mimeType,
+        size: uploaded.size,
+      },
+    });
+
+    created.push(p);
+
+    if (finalFile.path && fs.existsSync(finalFile.path)) {
+      try { fs.unlinkSync(finalFile.path); } catch {}
     }
+  }
+}
 
     const pdfs = await prisma.transactionPDF.findMany({ where: { transactionId: id } });
     res.json({ ok: true, added: created.length, pdfs });
@@ -2554,7 +2784,7 @@ app.post("/transactions/:id/pdfs", uploadDisk.array("pdfs"), async (req, res) =>
 });
 
 // remove pdf from txn
-app.delete("/transactions/:id/pdfs/:pdfId", async (req, res) => {
+app.delete("/transactions/:id/pdfs/:pdfId", requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const pdfId = Number(req.params.pdfId);
@@ -2564,10 +2794,8 @@ app.delete("/transactions/:id/pdfs/:pdfId", async (req, res) => {
     });
     if (!pdf) return res.status(404).json({ error: "PDF not found" });
 
-    const fpath = path.join(UPLOAD_DIR, pdf.filePath);
-    if (fs.existsSync(fpath)) fs.unlinkSync(fpath);
-
-    await prisma.transactionPDF.delete({ where: { id: pdfId } });
+    await deleteFromSupabase(pdf.filePath);
+await prisma.transactionPDF.delete({ where: { id: pdfId } });
 
     const pdfs = await prisma.transactionPDF.findMany({ where: { transactionId: id } });
     res.json({ ok: true, pdfs });
@@ -2613,16 +2841,15 @@ app.get("/pdfs/:pdfId", async (req, res) => {
       return res.status(403).send("Forbidden");
     }
 
-    const filePath = path.join(UPLOAD_DIR, pdf.filePath);
-    if (!fs.existsSync(filePath)) return res.status(404).send("File missing");
+const fileBuffer = await downloadFromSupabase(pdf.filePath);
 
-    res.setHeader("Content-Type", pdf.mimeType || "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `inline; filename="${String(pdf.originalName || "document.pdf").replace(/"/g, "")}"`
-    );
+res.setHeader("Content-Type", pdf.mimeType || "application/pdf");
+res.setHeader(
+  "Content-Disposition",
+  `inline; filename="${String(pdf.originalName || "document.pdf").replace(/"/g, "")}"`
+);
 
-    res.sendFile(filePath);
+return res.send(fileBuffer);
   } catch (e) {
     console.error(e);
     return res.status(500).send("Failed");
@@ -3002,12 +3229,24 @@ doc.text("www.stareng.co.in", left, y, {
       doc.text(money2(r.cr), X.credit, y, { width: col.credit, align: "right" });
 
       if (totalsLine) {
-        const lineY = totalsLine === "above" ? y - 2 : y + h - 2;
         doc.save();
         doc.lineWidth(0.6);
         doc.strokeColor("#6b7280");
-        doc.moveTo(X.debit + 6, lineY).lineTo(X.debit + col.debit - 2, lineY).stroke();
-        doc.moveTo(X.credit + 6, lineY).lineTo(X.credit + col.credit - 2, lineY).stroke();
+
+        const drawTotalLine = (lineY) => {
+          doc.moveTo(X.debit + 6, lineY).lineTo(X.debit + col.debit - 2, lineY).stroke();
+          doc.moveTo(X.credit + 6, lineY).lineTo(X.credit + col.credit - 2, lineY).stroke();
+        };
+
+        if (totalsLine === "above") {
+          drawTotalLine(y - 2);
+        } else if (totalsLine === "below") {
+          drawTotalLine(y + h - 2);
+        } else if (totalsLine === "both") {
+          drawTotalLine(y - 2);
+          drawTotalLine(y + h - 2);
+        }
+
         doc.restore();
       }
 
@@ -3081,7 +3320,7 @@ doc.text("www.stareng.co.in", left, y, {
       y = drawRow(y, r);
     }
 
-    const subTotalRow = {
+        const subTotalRow = {
       date: "",
       particulars: "",
       vchType: "",
@@ -3090,16 +3329,34 @@ doc.text("www.stareng.co.in", left, y, {
       cr: totalCr,
     };
 
-    if (y + rowHeight(" ") > bottomLimit()) {
-      drawFooter(pageNo);
-      doc.addPage();
-      pageNo++;
-      drawHeader();
-      y = drawTableHeader(doc.y);
-    }
-    y = drawRow(y, subTotalRow, { bold: true, totalsLine: "above" });
+    // ✅ if closing balance is zero, subtotal itself is the final total
+    if (diff === 0) {
+      if (y + rowHeight(" ") > bottomLimit()) {
+        drawFooter(pageNo);
+        doc.addPage();
+        pageNo++;
+        drawHeader();
+        y = drawTableHeader(doc.y);
+      }
 
-    if (diff > 0) {
+      y = drawRow(y, subTotalRow, {
+        bold: true,
+        totalsLine: "both",
+      });
+    } else {
+      if (y + rowHeight(" ") > bottomLimit()) {
+        drawFooter(pageNo);
+        doc.addPage();
+        pageNo++;
+        drawHeader();
+        y = drawTableHeader(doc.y);
+      }
+
+      y = drawRow(y, subTotalRow, {
+        bold: true,
+        totalsLine: "above",
+      });
+
       const closingRow = {
         date: "",
         particulars: drGreater ? "By Closing Balance" : "To Closing Balance",
@@ -3116,26 +3373,33 @@ doc.text("www.stareng.co.in", left, y, {
         drawHeader();
         y = drawTableHeader(doc.y);
       }
-      y = drawRow(y, closingRow, { bold: true, totalsLine: "below" });
-    }
 
-    const grandRow = {
-      date: "",
-      particulars: "",
-      vchType: "",
-      vchNo: "",
-      dr: grandTotal,
-      cr: grandTotal,
-    };
+      y = drawRow(y, closingRow, {
+        bold: true,
+      });
 
-    if (y + rowHeight(" ") > bottomLimit()) {
-      drawFooter(pageNo);
-      doc.addPage();
-      pageNo++;
-      drawHeader();
-      y = drawTableHeader(doc.y);
+      const grandRow = {
+        date: "",
+        particulars: "",
+        vchType: "",
+        vchNo: "",
+        dr: grandTotal,
+        cr: grandTotal,
+      };
+
+      if (y + rowHeight(" ") > bottomLimit()) {
+        drawFooter(pageNo);
+        doc.addPage();
+        pageNo++;
+        drawHeader();
+        y = drawTableHeader(doc.y);
+      }
+
+      y = drawRow(y, grandRow, {
+        bold: true,
+        totalsLine: "both",
+      });
     }
-    y = drawRow(y, grandRow, { bold: true, totalsLine: "below" });
 
     drawFooter(pageNo);
     doc.end();
