@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 
 // ---------- helpers ----------
@@ -31,6 +31,62 @@ function bytes(n) {
   return `${(kb / 1024).toFixed(2)} MB`;
 }
 
+function textToEditorHtml(text = "") {
+  return escHtml(text).replace(/\n/g, "<br>");
+}
+
+function normalizeEditorHtml(html = "") {
+  let out = String(html || "");
+
+  out = out.replace(/<div><br><\/div>/gi, "<br>");
+  out = out.replace(/<div>/gi, "<br>");
+  out = out.replace(/<\/div>/gi, "");
+  out = out.replace(/<p[^>]*>/gi, "<br>");
+  out = out.replace(/<\/p>/gi, "");
+  out = out.replace(/&nbsp;/gi, " ");
+
+  out = out.replace(/(<br>\s*){3,}/gi, "<br><br>");
+  out = out.replace(/^(\s*<br>\s*)+/gi, "");
+
+  return out.trim();
+}
+
+function getPlainTextFromHtml(html = "") {
+  if (typeof document === "undefined") return "";
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  return (tmp.textContent || tmp.innerText || "").trim();
+}
+
+function insertHtmlAtCursor(html) {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+
+  const temp = document.createElement("div");
+  temp.innerHTML = html;
+
+  const frag = document.createDocumentFragment();
+  let node;
+  let lastNode = null;
+
+  while ((node = temp.firstChild)) {
+    lastNode = frag.appendChild(node);
+  }
+
+  range.insertNode(frag);
+
+  if (lastNode) {
+    const newRange = document.createRange();
+    newRange.setStartAfter(lastNode);
+    newRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(newRange);
+  }
+}
+
 const REPLY_TO = "corporate@stareng.co.in";
 
 export default function EmailCenter() {
@@ -42,11 +98,13 @@ export default function EmailCenter() {
 
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("STAR Engineering – Notification");
-  const [message, setMessage] = useState("");
+  const [messageHtml, setMessageHtml] = useState("");
   const [mainPdf, setMainPdf] = useState(null);
   const [extraFiles, setExtraFiles] = useState([]);
   const [sending, setSending] = useState(false);
   const [okMsg, setOkMsg] = useState("");
+
+  const editorRef = useRef(null);
 
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth <= 980 : false
@@ -76,15 +134,47 @@ export default function EmailCenter() {
     loadLeads();
   }, []);
 
+  useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== messageHtml) {
+      editorRef.current.innerHTML = messageHtml || "";
+    }
+  }, [messageHtml]);
+
+  function focusEditor() {
+    editorRef.current?.focus();
+  }
+
+  function syncFromEditor() {
+    const html = normalizeEditorHtml(editorRef.current?.innerHTML || "");
+    setMessageHtml(html);
+  }
+
+  function runCmd(command, value = null) {
+    focusEditor();
+    document.execCommand(command, false, value);
+    syncFromEditor();
+  }
+
+  function setFontSize(size) {
+    focusEditor();
+    document.execCommand("styleWithCSS", false, true);
+    document.execCommand("fontSize", false, size);
+    syncFromEditor();
+  }
+
   function clearComposer() {
     setSelectedLead(null);
     setTo("");
     setSubject("STAR Engineering – Notification");
-    setMessage("");
+    setMessageHtml("");
     setMainPdf(null);
     setExtraFiles([]);
     setOkMsg("");
     setErr("");
+
+    if (editorRef.current) {
+      editorRef.current.innerHTML = "";
+    }
   }
 
   function composeFromLead(l) {
@@ -115,7 +205,34 @@ export default function EmailCenter() {
       `www.stareng.co.in`,
     ].join("\n");
 
-    setMessage(baseMsg);
+    const html = textToEditorHtml(baseMsg);
+    setMessageHtml(html);
+
+    if (editorRef.current) {
+      editorRef.current.innerHTML = html;
+    }
+  }
+
+  function onEditorInput() {
+    syncFromEditor();
+  }
+
+  function onEditorKeyDown(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      focusEditor();
+      insertHtmlAtCursor("<br>");
+      syncFromEditor();
+    }
+  }
+
+  function onEditorPaste(e) {
+    e.preventDefault();
+    const text = e.clipboardData?.getData("text/plain") || "";
+    const safe = escHtml(text).replace(/\r\n/g, "\n").replace(/\n/g, "<br>");
+    focusEditor();
+    insertHtmlAtCursor(safe);
+    syncFromEditor();
   }
 
   const previewHtml = useMemo(() => {
@@ -129,7 +246,7 @@ export default function EmailCenter() {
       ? `We received your requirement and will assist you shortly.`
       : `Please find the message below.`;
 
-    const bodyText = escHtml(message || "").replace(/\n/g, "<br/>");
+    const bodyHtml = normalizeEditorHtml(messageHtml || "");
 
     const summaryBlock = lead
       ? `
@@ -283,12 +400,10 @@ box-shadow:
           font-family:Arial,Helvetica,sans-serif;
         ">
           <div style="font-size:14px;line-height:1.85;color:#1f2937;">
-            ${bodyText || "—"}
+            ${bodyHtml || "—"}
           </div>
 
           ${summaryBlock}
-
-          <br>
 
           <div style="
             margin-top:18px;
@@ -390,7 +505,7 @@ box-shadow:
   </tbody>
 </table>
     `;
-  }, [message, selectedLead]);
+  }, [messageHtml, selectedLead]);
 
   function removeExtra(i) {
     setExtraFiles((prev) => prev.filter((_, idx) => idx !== i));
@@ -400,9 +515,11 @@ box-shadow:
     setOkMsg("");
     setErr("");
 
+    const plainText = getPlainTextFromHtml(messageHtml);
+
     if (!to.trim()) return setErr("To email required");
     if (!subject.trim()) return setErr("Subject required");
-    if (!message.trim()) return setErr("Message required");
+    if (!plainText.trim()) return setErr("Message required");
 
     setSending(true);
     try {
@@ -546,15 +663,62 @@ box-shadow:
                 />
               </label>
 
-              <label style={S.labelWrap}>
+              <div style={S.labelWrap}>
                 <div style={S.label}>Message</div>
-                <textarea
-                  style={{ ...S.input, minHeight: 190, resize: "vertical", paddingTop: 12 }}
-                  rows={8}
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                />
-              </label>
+
+                <div style={S.editorWrap}>
+                  <div style={S.toolbar}>
+                    <button type="button" style={S.toolBtn} onClick={() => runCmd("bold")} title="Bold">
+                      <b>B</b>
+                    </button>
+                    <button type="button" style={S.toolBtn} onClick={() => runCmd("italic")} title="Italic">
+                      <i>I</i>
+                    </button>
+                    <button type="button" style={S.toolBtn} onClick={() => runCmd("underline")} title="Underline">
+                      <u>U</u>
+                    </button>
+                    <button type="button" style={S.toolBtn} onClick={() => setFontSize(2)} title="Small text">
+                      A-
+                    </button>
+                    <button type="button" style={S.toolBtn} onClick={() => setFontSize(3)} title="Normal text">
+                      A
+                    </button>
+                    <button type="button" style={S.toolBtn} onClick={() => setFontSize(5)} title="Large text">
+                      A+
+                    </button>
+                    <button type="button" style={S.toolBtn} onClick={() => runCmd("insertUnorderedList")} title="Bullet list">
+                      • List
+                    </button>
+                    <button type="button" style={S.toolBtn} onClick={() => runCmd("insertOrderedList")} title="Number list">
+                      1. List
+                    </button>
+                    <button type="button" style={S.toolBtn} onClick={() => runCmd("removeFormat")} title="Clear format">
+                      Clear
+                    </button>
+                    <button type="button" style={S.toolBtn} onClick={() => runCmd("undo")} title="Undo">
+                      Undo
+                    </button>
+                    <button type="button" style={S.toolBtn} onClick={() => runCmd("redo")} title="Redo">
+                      Redo
+                    </button>
+                  </div>
+
+                  <div
+                    ref={editorRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={onEditorInput}
+                    onKeyDown={onEditorKeyDown}
+                    onPaste={onEditorPaste}
+                    data-placeholder="Type your email here..."
+                    style={S.editor}
+                  />
+                </div>
+
+                <div style={S.editorHint}>
+                  Enter = single line break. Paste will keep plain text only.
+                </div>
+              </div>
 
               <div style={S.attachGrid}>
                 <div style={S.attachCard}>
@@ -627,6 +791,34 @@ box-shadow:
           </div>
         </div>
       </div>
+
+      <style>{`
+        [contenteditable][data-placeholder]:empty:before {
+          content: attr(data-placeholder);
+          color: #94a3b8;
+          pointer-events: none;
+          display: block;
+        }
+
+        [contenteditable] ul,
+        [contenteditable] ol {
+          margin: 8px 0 8px 20px;
+        }
+
+        [contenteditable] b,
+        [contenteditable] strong {
+          font-weight: 700;
+        }
+
+        [contenteditable] i,
+        [contenteditable] em {
+          font-style: italic;
+        }
+
+        [contenteditable] u {
+          text-decoration: underline;
+        }
+      `}</style>
     </div>
   );
 }
@@ -898,6 +1090,56 @@ const S = {
       "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.92))",
     color: "#111827",
     boxShadow: "0 8px 18px rgba(17,24,39,0.04)",
+  },
+
+  editorWrap: {
+    border: "1px solid rgba(17,24,39,0.10)",
+    borderRadius: 16,
+    overflow: "hidden",
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.92))",
+    boxShadow: "0 8px 18px rgba(17,24,39,0.04)",
+  },
+
+  toolbar: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    padding: 10,
+    borderBottom: "1px solid rgba(17,24,39,0.08)",
+    background:
+      "radial-gradient(700px 180px at 15% 0%, rgba(255,0,102,0.04), transparent 55%), linear-gradient(180deg,#fff,#fffafc)",
+  },
+
+  toolBtn: {
+    height: 34,
+    padding: "0 10px",
+    borderRadius: 10,
+    border: "1px solid rgba(17,24,39,0.10)",
+    background: "#fff",
+    color: "#111827",
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: 800,
+    fontFamily: "Arial, Helvetica, sans-serif",
+  },
+
+  editor: {
+    minHeight: 190,
+    padding: 12,
+    outline: "none",
+    fontSize: 14,
+    lineHeight: 1.6,
+    color: "#111827",
+    whiteSpace: "normal",
+    wordBreak: "break-word",
+    fontFamily: "Arial, Helvetica, sans-serif",
+  },
+
+  editorHint: {
+    fontSize: 11,
+    color: "#64748b",
+    fontWeight: 700,
   },
 
   attachGrid: {
