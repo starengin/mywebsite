@@ -31,17 +31,11 @@ export default function Sidebar() {
       {/* HEADER */}
       <div className="h-20 px-5 border-b border-slate-200/70 flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="h-12 w-12 rounded-2xl bg-white border border-slate-200 shadow-[0_10px_24px_rgba(15,23,42,0.08)] grid place-items-center overflow-hidden shrink-0">
-            <img
-              src="https://www.stareng.co.in/brand/logo.jpg"
-              alt="STAR"
-              className="h-8 w-8 object-contain rounded-lg"
-            />
-          </div>
+
 
           <div className="min-w-0">
             <div
-              className="truncate text-[20px] font-extrabold tracking-tight"
+              className="truncate text-[18px] font-extrabold tracking-tight"
               style={{
                 background:
                   "linear-gradient(135deg, #ff2d55 0%, #7c3aed 48%, #2563eb 78%, #f59e0b 100%)",
